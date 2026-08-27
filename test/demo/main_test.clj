@@ -49,6 +49,26 @@
 (defn decode [response]
   (json/read-str (:body response) :key-fn keyword))
 
+(deftest all-otlp-signal-routes-reach-the-suppressed-receiver
+  (let [seen (atom [])
+        h (demo/handler
+           (assoc (test-app)
+                  :otlp-handler
+                  (fn [request]
+                    (swap! seen conj
+                           [(:uri request)
+                            (otlp-receiver/telemetry-suppressed? request)])
+                    {:status 202 :headers {} :body ""})))]
+    (doseq [path [otlp-receiver/traces-path
+                  otlp-receiver/logs-path
+                  otlp-receiver/metrics-path]]
+      (is (= path (demo/route-for path)))
+      (is (= 202 (:status (h {:request-method :post :uri path})))))
+    (is (= [[otlp-receiver/traces-path true]
+            [otlp-receiver/logs-path true]
+            [otlp-receiver/metrics-path true]]
+           @seen))))
+
 (def ^:private live-test-port (atom (+ 28600 (rand-int 200))))
 
 (defn- next-live-test-port [] (swap! live-test-port inc))

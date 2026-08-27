@@ -175,7 +175,7 @@
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/work") "/work"
         (= path "/upstream") "/upstream"
-        (= path otlp-receiver/traces-path) otlp-receiver/traces-path
+        (contains? otlp-receiver/receiver-paths path) path
         :else "/*"))
 
 (defn- real-work! [{:keys [port tracer logger propagator]}]
@@ -226,7 +226,7 @@
                            stream-state otlp-handler] :as app}]
   (fn [{:keys [request-method uri] :as request}]
     (cond
-      (= uri otlp-receiver/traces-path)
+      (otlp-receiver/receiver-request? request)
       (otlp-handler request)
 
       (and (= :post request-method) (= uri "/work"))
