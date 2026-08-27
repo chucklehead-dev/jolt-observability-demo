@@ -54,6 +54,14 @@
   (let [bytes (.getBytes (str text) "UTF-8")]
     (http-body/sink-write! sink bytes 0 (alength bytes))))
 
+(defn- peer-disconnect? [error]
+  (loop [error error]
+    (when error
+      (let [data (ex-data error)]
+        (or (= :connection-reset (:jolt.net/kind data))
+            (= :teensyp.server/socket-closed (:err data))
+            (recur (ex-cause error)))))))
+
 (defrecord LiveBody [render state]
   http-body/StreamableBody
   (write-body-to-sink [_ _response sink]
@@ -67,13 +75,26 @@
                   heartbeat? (>= (- now heartbeat-at) heartbeat-ms)]
               (cond
                 changed?
-                (write-text! sink
-                             (datastar/patch-elements-event html "#otel-live" "inner"))
+                (do
+                  (write-text! sink
+                               (datastar/patch-elements-event html "#otel-live" "inner"))
+                  ;; jolt-http coalesces generic body writes. An SSE event is a
+                  ;; complete visibility boundary, not a fragment awaiting
+                  ;; response close.
+                  (http-body/sink-flush! sink))
 
                 heartbeat?
-                (write-text! sink ": keepalive\n\n"))
+                (do
+                  (write-text! sink ": keepalive\n\n")
+                  (http-body/sink-flush! sink)))
               (Thread/sleep interval-ms)
               (recur html (if (or changed? heartbeat?) now heartbeat-at)))))
+        (catch Throwable error
+          ;; EventSource/curl disconnect is the normal end of an infinite
+          ;; response. Transport errors remain visible to jolt-http everywhere
+          ;; else; this body alone owns their expected cancellation semantics.
+          (when-not (peer-disconnect? error)
+            (throw error)))
         (finally
           (swap! (:active state) dec))))))
 

@@ -571,6 +571,51 @@
                          state (constantly "late"))))
         "shutdown rejects new streams")))
 
+(deftest datastar-peer-disconnect-is-normal-stream-completion
+  (let [state (demo-datastar/stream-state
+               {:interval-ms 0 :heartbeat-ms 100 :max-streams 1})
+        response (demo-datastar/stream-response state (constantly "snapshot"))
+        sink (reify http-body/Sink
+               (sink-write! [_ _ _ _]
+                 (throw (ex-info "peer left"
+                                 {:jolt.net/kind :connection-reset})))
+               (sink-close! [_] nil))]
+    (is (nil? (http-body/write-body-to-sink (:body response) response sink)))
+    (is (= 0 @(:active state)))))
+
+(deftest live-sse-crosses-the-real-http-server-before-close
+  (let [port (next-live-test-port)
+        lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
+        client (atom nil)
+        reader
+        (future
+          (let [fd (net/connect-loopback port)]
+            (reset! client fd)
+            (try
+              (net/client-send-all
+               fd (.getBytes
+                   (str "GET /?datastar-sse=true HTTP/1.1\r\n"
+                        "Host: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                   "UTF-8"))
+              (loop [received ""]
+                (if (str/includes? received "event: datastar-patch-elements")
+                  received
+                  (if-let [chunk (net/client-recv fd 8192)]
+                    (recur (str received (String. chunk "UTF-8")))
+                    received)))
+              (finally (net/close! fd)))))]
+    (try
+      (let [received (deref reader 5000 ::timeout)]
+        (is (not= ::timeout received)
+            "the initial live event is flushed before the infinite body closes")
+        (is (str/includes? received "HTTP/1.1 200 OK"))
+        (is (str/includes? received "Content-Type: text/event-stream"))
+        (is (str/includes? received "selector #otel-live")))
+      (finally
+        (when-let [fd @client] (net/close! fd))
+        (deref reader 2000 nil)
+        (demo/stop! lifecycle)))))
+
 (deftest live-loopback-integration
   (let [port (+ 24000 (rand-int 3000))
         lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
@@ -612,13 +657,20 @@
                                               {:conn-timeout 2000 :socket-timeout 5000}))
               spans (:spans detail)
               server (some #(when (= "HTTP GET /work" (:name %)) %) spans)
+              database (some #(when (= "SELECT demo readiness" (:name %)) %) spans)
+              producer (some #(when (= "demo.jobs publish" (:name %)) %) spans)
+              consumer (some #(when (= "demo.jobs process" (:name %)) %) spans)
               client (some #(when (and (= "HTTP GET /upstream" (:name %))
                                        (= "client" (:kind %))) %) spans)
               upstream (some #(when (and (= "HTTP GET /upstream" (:name %))
                                          (= "server" (:kind %))) %) spans)]
           (is (= "HTTP GET /work" (:rootSpan summary)))
-          (is (= 3 (count spans)) "one propagated trace contains both HTTP edges")
+          (is (= 6 (count spans))
+              "one trace contains DB, queue propagation, and both HTTP edges")
           (is (= remote-span-id (:parentSpanId server)))
+          (is (= (:spanId server) (:parentSpanId database)))
+          (is (= (:spanId server) (:parentSpanId producer)))
+          (is (= (:spanId producer) (:parentSpanId consumer)))
           (is (= (:spanId server) (:parentSpanId client)))
           (is (= (:spanId client) (:parentSpanId upstream)))
           (is (some #(and (= (:traceId detail) (:traceId %))
@@ -628,6 +680,8 @@
             (is (= 200 (:status page)))
             (is (str/includes? (:body page) "<details open>"))
             (is (str/includes? (:body page) "HTTP GET /upstream"))
+            (is (str/includes? (:body page) "SELECT demo readiness"))
+            (is (str/includes? (:body page) "demo.jobs process"))
             (is (not (str/includes? (:body page) "<script"))))
           (let [before-post (:traceCount (decode (http-client/get (str base "/api/summary"))))
                 live-response ((demo/handler (:app lifecycle))

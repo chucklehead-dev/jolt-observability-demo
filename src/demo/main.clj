@@ -291,9 +291,47 @@
         (contains? otlp-receiver/receiver-paths path) path
         :else "/*"))
 
-(defn- real-work! [{:keys [port tracer logger propagator]}]
+(defn- database-work! [connection tracer]
+  (trace/with-span [span tracer "SELECT demo readiness"
+                    {:kind :internal
+                     :attributes {:db.system.name "clickhouse"
+                                  :db.namespace "default"
+                                  :db.operation.name "SELECT"}}]
+    (let [ready (value-of (first (jdbc/fetch connection "SELECT 1 AS ready"))
+                          :ready)]
+      (trace/set-attribute! span :demo.db.ready ready)
+      ready)))
+
+(defn- queue-work! [tracer logger propagator]
+  ;; The envelope is deliberately ordinary data. Injecting and extracting the
+  ;; propagator proves the same handoff an fs-backed or cross-process queue
+  ;; would perform without making this small demo own a queue lifecycle.
+  (let [envelope
+        (trace/with-span [_ tracer "demo.jobs publish"
+                          {:kind :producer
+                           :attributes {:messaging.system "demo.queue"
+                                        :messaging.destination.name "demo.jobs"
+                                        :messaging.operation.type "publish"}}]
+          {:headers (propagation/inject-current propagator {})
+           :body {:job "refresh-catalog"}})
+        parent (propagation/extract propagator context/root (:headers envelope))]
+    (trace/with-span [_ tracer "demo.jobs process"
+                      {:kind :consumer
+                       :parent parent
+                       :attributes {:messaging.system "demo.queue"
+                                    :messaging.destination.name "demo.jobs"
+                                    :messaging.operation.type "process"
+                                    :demo.job (get-in envelope [:body :job])}}]
+      (logs/emit! logger {:body "processed propagated demo job"
+                          :severity :info
+                          :attributes {:messaging.destination.name "demo.jobs"}})
+      (:body envelope))))
+
+(defn- real-work! [{:keys [connection port tracer logger propagator]}]
   (logs/emit! logger {:body "calling loopback upstream" :severity :info
                       :attributes {:http.route "/work"}})
+  (database-work! connection tracer)
+  (queue-work! tracer logger propagator)
   (trace/with-span [client-span tracer "HTTP GET /upstream"
                     {:kind :client
                      :attributes {:http.request.method "GET"
