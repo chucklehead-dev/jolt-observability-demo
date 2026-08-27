@@ -53,6 +53,14 @@
 (defn decode [response]
   (json/read-str (:body response) :key-fn keyword))
 
+(deftest model-telemetry-defaults-are-private-and-reasoning-safe
+  (let [app (test-app)]
+    (is (= "local-model-host" (:lemonade-telemetry-address app)))
+    (is (true? (:lemonade-disable-thinking? app))))
+  (is (false? (:lemonade-disable-thinking?
+               (demo/app-context {:lemonade-disable-thinking? false})))
+      "callers can explicitly opt back into provider thinking"))
+
 (deftest all-otlp-signal-routes-reach-the-suppressed-receiver
   (let [seen (atom [])
         h (demo/handler
@@ -760,7 +768,7 @@
         response-body
         (json/write-str
          {:choices [{:message {:role "assistant"
-                               :content "bounded sanitized answer"}
+                               :content "<think>private chain of thought</think>bounded sanitized answer"}
                      :finish_reason "stop"}]
           :usage {:prompt_tokens 17 :completion_tokens 5 :total_tokens 22}})
         requests (atom [])]
@@ -800,9 +808,26 @@
         (is (every? #(= 7 (:spanCount %)) traces))
         (is (some? captured))
         (is (some? omitted))
+        (let [by-name (into {} (map (juxt :name identity)) (:spans captured))]
+          (is (str/blank? (:parentSpanId (get by-name "samizdat.run"))))
+          (doseq [[child parent]
+                  [["samizdat.control-loop" "samizdat.run"]
+                   ["samizdat.branch B1" "samizdat.control-loop"]
+                   ["samizdat.turn 1" "samizdat.branch B1"]
+                   ["chat" "samizdat.turn 1"]
+                   ["HTTP POST /v1/chat/completions" "chat"]
+                   ["execute_tool response_length" "samizdat.turn 1"]]]
+            (is (= (:spanId (get by-name parent))
+                   (:parentSpanId (get by-name child)))
+                (str child " is parented by " parent))))
         (is (not-any? #(contains? (:attributes %)
                                   "samizdat.response.sanitized")
                       (:spans omitted)))
+        (is (not (str/includes? (pr-str (mapcat :spans details)) "marvin"))
+            "physical model hostnames are not emitted by the default telemetry label")
+        (is (not (str/includes? (pr-str (mapcat :spans details))
+                                "private chain of thought"))
+            "delimited reasoning is stripped even when an endpoint ignores thinking=false")
         (is (every? #(not (str/includes? (pr-str (:attributes %))
                                           "brain the size of a planet"))
                     (mapcat :spans details))

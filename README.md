@@ -36,8 +36,9 @@ JOLT_CHDB_LIB=/path/to/libchdb.so jolt -m demo.main
 
 **Run model (metadata only)** records the run/branch/turn/generation/HTTP/tool
 hierarchy and usage. **Run model (show response)** additionally records one
-bounded sanitized assistant response. Neither mode records the prompt, system
-instructions, reasoning, credentials, or tool arguments.
+bounded assistant response after stripping common delimited thinking output.
+Neither mode records the prompt, system instructions, credentials, or tool
+arguments; thinking is disabled by default.
 
 Configuration is optional:
 
@@ -45,6 +46,12 @@ Configuration is optional:
 - `DEMO_CHDB_SPEC` selects the chDB database (default `chdb::memory:`).
 - `JOLT_CHDB_LIB` selects an existing `libchdb` installation.
 - `JOLT_CHDB_CACHE_DIR` selects where the installer stores chDB.
+- `DEMO_LEMONADE_BASE_URL` selects the physical OpenAI-compatible endpoint,
+  which is never copied into telemetry.
+- `DEMO_LEMONADE_TELEMETRY_ADDRESS` selects a non-identifying display label
+  (default `local-model-host`).
+- `DEMO_LEMONADE_DISABLE_THINKING` defaults to true; set it to `false` only when
+  intentionally testing provider thinking behavior.
 
 For persistent data, prefer a map dbspec from an embedding application. The
 standalone demo also accepts a `chdb:` URI through `DEMO_CHDB_SPEC`; the demo

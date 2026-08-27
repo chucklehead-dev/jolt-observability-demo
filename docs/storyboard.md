@@ -71,9 +71,10 @@ instead of treating progressive enhancement as the only application.
 An optional live storyboard calls an OpenAI-compatible Lemonade server twice
 with the same overqualified-maintenance-android task. The first trace retains
 only model, latency, finish reason, token usage, and control-loop structure. The
-second additionally stores the bounded, sanitized assistant response. Prompts,
-system instructions, reasoning, credentials, and tool arguments remain absent
-in both modes.
+second additionally stores the bounded assistant response after common
+delimited thinking output is stripped. Prompts, system instructions, physical
+model hostnames, credentials, and tool arguments remain absent in both modes;
+provider thinking is disabled by default.
 
 Run it with an endpoint reachable from the demo process and a neutral telemetry
 display address so private hostnames never enter checked-in screenshots:

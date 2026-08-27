@@ -35,6 +35,8 @@ generic HTTP or database library:
 | Role | Resolved call | Current call site |
 | --- | --- | --- |
 | Run | `samizdat.agent.beam/run!` arity 1 | `api/control.clj:100`, inside the future created at line 98; and `api/openai.clj:103` |
+| Control loop | Beam scheduler scope around branch advancement | Compose around the run and `advance-branch` rules; no standalone resolved call is claimed |
+| Branch | Per-branch scope | Derived from the branch value passed to `advance-branch`; no standalone resolved call is claimed |
 | Beam turn | `samizdat.agent.beam/advance-branch` arity 3 | `agent/beam.clj:566`; encloses the production branch turn |
 | Model | `samizdat.llm.client/chat` arity 4 | `agent/infer.clj:187`; also cover arity 3 raw/probe callers |
 | Tool selection event | `samizdat.agent.infer/absorb` arity 3 | `agent/loop.clj:377` |
@@ -81,10 +83,16 @@ llama.cpp cache/template options.
 ## Data policy
 
 Metadata-only is the default: model/provider, finish reason, latency, token
-usage, bounded error type, run/branch/turn IDs, and tool name. Do not record
+usage, bounded error type, run/branch/turn IDs, tool name, and a non-identifying
+logical endpoint label. Do not record the physical model hostname,
 prompts, system instructions, reasoning, response content, tool arguments or
 results, file contents, credentials, environment maps, SQL parameters, or raw
-provider error bodies. Content capture is a separate explicit mode, passes
-through Samizdat redaction, is capped, and uses only
+provider error bodies. Content capture is a separate explicit mode, must pass
+through Samizdat's redaction boundary, is capped, and uses only
 `samizdat.response.sanitized` with
 `samizdat.response.content_state=captured`.
+
+The standalone demo does not claim Samizdat's full redaction policy. It disables
+model thinking by default, strips common delimited `<think>...</think>` output,
+and caps the visible response. Capture mode still intentionally records model
+content and must not be enabled for sensitive workloads.

@@ -358,8 +358,12 @@
                              (str "HTTP " (:status response)))
           (throw (ex-info "loopback upstream failed" {:status (:status response)})))))))
 
-(defn- bounded-captured-response [value]
-  (let [value (str/trim (or value ""))]
+(defn- sanitized-captured-response [value]
+  ;; Thinking is disabled by default, but strip the common delimited form too
+  ;; so an endpoint that ignores the request option cannot publish it.
+  (let [value (-> (or value "")
+                  (str/replace #"(?is)<think\b[^>]*>.*?</think>" "")
+                  str/trim)]
     (subs value 0 (min max-captured-response-length (count value)))))
 
 (defn- lemonade-chat!
@@ -436,7 +440,7 @@
             (trace/set-attribute! generation attribute value)))
         (when capture-response?
           (trace/set-attribute! generation :samizdat.response.sanitized
-                                (bounded-captured-response content)))
+                                (sanitized-captured-response content)))
         (trace/set-status! generation :ok)
         {:content content
          :finish-reason finish-reason
@@ -557,12 +561,13 @@
      :lemonade-telemetry-address
      (or lemonade-telemetry-address
          (System/getenv "DEMO_LEMONADE_TELEMETRY_ADDRESS")
-         "marvin.local")
+         "local-model-host")
      :lemonade-disable-thinking?
-     (or lemonade-disable-thinking?
-         (= "true" (some-> (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")
-                            str/lower-case))
-         (= "1" (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")))
+     (if (nil? lemonade-disable-thinking?)
+       (not (contains? #{"false" "0"}
+                       (some-> (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")
+                               str/lower-case)))
+       lemonade-disable-thinking?)
      :otlp-handler (or otlp-handler
                        (fn [_] (error-response 503 "OTLP receiver unavailable")))}))
 

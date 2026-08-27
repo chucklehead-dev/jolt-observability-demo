@@ -44,8 +44,9 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   Lemonade-backed, Samizdat-shaped control-loop turn. Both record a root run,
   control loop, branch, turn, logical generation, physical HTTP attempt, and
   tool span. The first is metadata-only; the second additionally records one
-  bounded sanitized response. Neither records prompts, system instructions,
-  reasoning, credentials, or tool arguments.
+  bounded response after common delimited thinking output is stripped. Neither
+  records prompts, system instructions, physical model hostnames, credentials,
+  or tool arguments; provider thinking is disabled by default.
 - `POST /v1/traces` accepts OTLP/HTTP JSON traces through the host-agnostic
   `otel.otlp.http-receiver`. The demo parser measures actual UTF-8 encoded bytes,
   limits bodies to 1 MiB, rejects compression, and admits one parse/export at a
