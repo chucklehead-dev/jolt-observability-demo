@@ -3,11 +3,9 @@ set -euo pipefail
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 probe_dir=${THREADSTATUS_PROBE_DIR:-/tmp/jolt-observability-threadstatus}
-jolt_cache=${JOLT_CACHE_DIR:-/home/chuck/.cache/jolt-observability-demo-datastar/aot}
-gitlibs_dir=${JOLT_GITLIBS_DIR:-/home/chuck/.cache/jolt-observability-demo-datastar/gitlibs}
-chdb_lib=${JOLT_CHDB_LIB:-/home/chuck/.cache/jolt-native/chdb/26.7.0/linux-x86_64/libchdb.so}
-hegel_lib=${HEGEL_LIBHEGEL_LIBRARY:-/home/chuck/.cache/jolt-hegel-v030-native/libhegel_c.so}
-jolt_wrapper=/home/chuck/ai-src/tools/jolt-with-chez-10.4.1
+cache_root=${XDG_CACHE_HOME:-${HOME}/.cache}
+jolt_cache=${JOLT_CACHE_DIR:-$cache_root/jolt-observability-threadstatus/aot}
+gitlibs_dir=${JOLT_GITLIBS_DIR:-$cache_root/jolt-observability-threadstatus/gitlibs}
 scenarios=${THREADSTATUS_PROBE_SCENARIOS:-"startup work post-flush viewer sse sse-work otlp otlp-sse mixed-stress"}
 repeat=${THREADSTATUS_PROBE_REPEAT:-1}
 
@@ -26,10 +24,16 @@ for scenario in $scenarios; do
   stderr_file="$probe_dir/$scenario.$iteration.stderr"
   transcript_file="$probe_dir/$scenario.$iteration.typescript"
   plain_file="$probe_dir/$scenario.$iteration.plain"
-  if env JOLT_CACHE_DIR="$jolt_cache" \
-      JOLT_GITLIBS_DIR="$gitlibs_dir" \
-      JOLT_CHDB_LIB="$chdb_lib" \
-      HEGEL_LIBHEGEL_LIBRARY="$hegel_lib" \
+  probe_env=(env JOLT_CACHE_DIR="$jolt_cache" JOLT_GITLIBS_DIR="$gitlibs_dir")
+  if [[ -n ${JOLT_CHDB_LIB:-} ]]; then
+    probe_env+=(JOLT_CHDB_LIB="$JOLT_CHDB_LIB")
+  fi
+  if [[ -n ${JOLT_WRAPPER:-} ]]; then
+    probe_env+=(JOLT_WRAPPER="$JOLT_WRAPPER")
+  elif [[ -n ${JOLT_BIN:-} ]]; then
+    probe_env+=(JOLT_BIN="$JOLT_BIN")
+  fi
+  if "${probe_env[@]}" \
       script -qefc "$repo_dir/scripts/run-threadstatus-case.sh $scenario $port" \
       "$transcript_file" >"$stdout_file" 2>"$stderr_file"; then
     process_status=0

@@ -1,22 +1,37 @@
 {:paths ["src" "resources"]
 
- :deps {jolt-lang/jolt-http {:local/root "/home/chuck/ai-src/jolt-http"}
-        jolt-lang/http-client {:local/root "/home/chuck/ai-src/http-client"}
-        io.github.jolt-lang/otel {:local/root "/home/chuck/ai-src/jolt-otel"}
-        io.github.jolt-lang/chdb {:local/root "/home/chuck/ai-src/jolt-chdb"}
-        io.github.jolt-lang/otel-clickhouse {:local/root "/home/chuck/ai-src/jolt-otel-clickhouse"}
-        io.github.jolt-lang/otel-viewer {:local/root "/home/chuck/ai-src/jolt-otel-viewer"}
+ :deps {io.github.casselc/jolt-http
+        {:git/url "https://github.com/casselc/jolt-http.git"
+         :git/sha "c9a52028fe3fc0c9e34f2916df77f998d6c142cf"}
+        io.github.casselc/http-client
+        {:git/url "https://github.com/casselc/http-client.git"
+         :git/sha "eba91d0536fee73ee192f68676915e48be23b348"}
+        io.github.casselc/otel
+        {:git/url "https://github.com/casselc/otel.git"
+         :git/sha "70187410f8877307606a98c4bd105c41075acb0e"}
+        io.github.chucklehead-dev/jolt-chdb
+        {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
+         :git/sha "d7f1c2b684f185459d313c934835c16282e8e42c"}
+        io.github.chucklehead-dev/jolt-otel-clickhouse
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
+         :git/sha "6b36b96f0d0301dbeb09b6ce10629fb4059b2d25"}
+        io.github.chucklehead-dev/jolt-otel-viewer
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
+         :git/sha "a353281d59bcc6af0b21f7f390d675d27bb9c220"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}
-        ;; Direct root override includes the timed-deref compatibility fix at
-        ;; local commit 6dab559; replace with its upstream SHA after publishing.
-        jolt-lang/glimmer {:local/root "/home/chuck/ai-src/glimmer"}
-        org.clojure/data.json {:local/root "/home/chuck/ai-src/data.json"}}
+        io.github.casselc/glimmer
+        {:git/url "https://github.com/casselc/glimmer.git"
+         :git/sha "6dab5597dc0d912793fe175d0d3cbb9e75f11426"}
+        io.github.casselc/data.json
+        {:git/url "https://github.com/casselc/data.json.git"
+         :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}}
 
  :jolt/build {:embed ["resources"]}
 
- :aliases {:test {:extra-paths ["test"]
+ :aliases {:setup-native {:main-opts ["-m" "jdbc.chdb.install"]}
+           :test {:extra-paths ["test"]
                   :extra-deps
                   {io.github.chucklehead-dev/jolt-hegel
                    {:git/url "https://github.com/chucklehead-dev/jolt-hegel.git"

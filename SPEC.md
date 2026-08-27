@@ -106,13 +106,13 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   matching the transcript.
   `THREADSTATUS_PROBE_SCENARIOS` selects cases and
   `THREADSTATUS_PROBE_REPEAT` repeats each in a fresh process for soak runs.
-- All commands use `/home/chuck/ai-src/tools/jolt-with-chez-10.4.1` and writable
-  cache directories. Verification does not publish, push, or modify local
-  dependencies.
+- Publication and CI commands use Jolt v0.7.27 and writable cache directories.
+  Workspace verification sets `JOLT_WRAPPER` to the required Chez 10.4.1
+  wrapper. Verification does not modify dependency sources.
 
 ## Adoption boundaries
 
-The local `io.github.jolt-lang/otel-viewer` package supplies
+The pinned `io.github.chucklehead-dev/jolt-otel-viewer` package supplies
 `otel.viewer/render-fragment`, `otel.viewer/render-page`,
 `otel.viewer/styles`, and `otel.viewer/enhancement-script` as pure rendering
 seams over bounded host-supplied data. The optional enhancement opens trace
