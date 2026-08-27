@@ -65,3 +65,26 @@ instead of treating progressive enhancement as the only application.
 - Build the demo with selected instrumentation aspects and prove the generated
   DB and HTTP spans replace the handwritten equivalents; see
   [instrumented-build-spike.md](instrumented-build-spike.md).
+
+## Agent/model privacy pair
+
+An optional live storyboard calls an OpenAI-compatible Lemonade server twice
+with the same overqualified-maintenance-android task. The first trace retains
+only model, latency, finish reason, token usage, and control-loop structure. The
+second additionally stores the bounded, sanitized assistant response. Prompts,
+system instructions, reasoning, credentials, and tool arguments remain absent
+in both modes.
+
+Run it with an endpoint reachable from the demo process and a neutral telemetry
+display address so private hostnames never enter checked-in screenshots:
+
+```sh
+DEMO_LEMONADE_BASE_URL=http://model-host:13305/v1 \
+DEMO_LEMONADE_TELEMETRY_ADDRESS=local-model-host \
+DEMO_LEMONADE_DISABLE_THINKING=true \
+JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:agent-screenshots
+```
+
+![Agent trace without response content](screenshots/05-agent-metadata-only.png)
+
+![Agent trace with bounded sanitized response](screenshots/06-agent-with-response.png)

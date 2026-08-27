@@ -7,7 +7,8 @@
   "scripts": {
     "test:browser": "playwright test --project=chromium",
     "test:browser:persistent": "scripts/test-browser-persistent.sh",
-    "docs:screenshots": "playwright test --project=docs"
+    "docs:screenshots": "playwright test --project=docs",
+    "docs:agent-screenshots": "playwright test --project=agent-docs"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1"
