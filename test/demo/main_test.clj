@@ -4,7 +4,8 @@
             [clojure.test :refer [deftest is testing]]
             [demo.main :as demo]
             [jolt.http-client :as http-client]
-            [otel.sdk :as sdk]))
+            [otel.sdk :as sdk]
+            [otel.viewer :as viewer]))
 
 (def sample-summary {:traceCount 1 :spanCount 2 :logCount 1 :errorCount 0})
 (def sample-traces [{:traceId "0123456789abcdef0123456789abcdef"
@@ -14,13 +15,18 @@
                    :body "hello" :traceId "0123456789abcdef0123456789abcdef"
                    :spanId "0123456789abcdef"}])
 (def sample-spans
-  [{:timestamp "2026-08-27T10:00:00Z" :spanId "root" :parentSpanId ""
-    :name "request" :durationNs 4000000}
-   {:timestamp "2026-08-27T10:00:00.001Z" :spanId "client" :parentSpanId "root"
+  [{:timestamp "2026-08-27T10:00:00Z" :timestampUnixNano 1000000000
+    :spanId "root" :parentSpanId ""
+    :name "request" :durationNs 4000000
+    :attributes {"http.route" "/work"}}
+   {:timestamp "2026-08-27T10:00:00.001Z" :timestampUnixNano 1001000000
+    :spanId "client" :parentSpanId "root"
     :name "HTTP GET" :durationNs 2000000}
-   {:timestamp "2026-08-27T10:00:00.0015Z" :spanId "decode" :parentSpanId "client"
+   {:timestamp "2026-08-27T10:00:00.0015Z" :timestampUnixNano 1001500000
+    :spanId "decode" :parentSpanId "client"
     :name "decode" :durationNs 500000}
-   {:timestamp "2026-08-27T10:00:00.003Z" :spanId "orphan" :parentSpanId "missing"
+   {:timestamp "2026-08-27T10:00:00.003Z" :timestampUnixNano 1003000000
+    :spanId "orphan" :parentSpanId "missing"
     :name "orphan" :durationNs 250000}])
 
 (defn test-app []
@@ -37,7 +43,8 @@
   (json/read-str (:body response) :key-fn keyword))
 
 (deftest pure-handler-statuses-and-shapes
-  (let [h (demo/handler (test-app))]
+  (let [flushes (atom 0)
+        h (demo/handler (assoc (test-app) :flush-fn #(swap! flushes inc)))]
     (testing "dashboard and bounded APIs"
       (is (= 200 (:status (h {:request-method :get :uri "/"}))))
       (is (= sample-summary (decode (h {:request-method :get :uri "/api/summary"}))))
@@ -45,6 +52,16 @@
       (is (= sample-logs (decode (h {:request-method :get :uri "/api/logs"}))))
       (is (= {:ok true :upstream {:ok true}}
              (decode (h {:request-method :get :uri "/work"})))))
+    (testing "HTML trace viewer and form action"
+      (let [page (h {:request-method :get
+                     :uri "/traces/0123456789abcdef0123456789abcdef"})
+            generated (h {:request-method :post :uri "/work"})]
+        (is (= 200 (:status page)))
+        (is (= "text/html; charset=UTF-8" (get-in page [:headers "Content-Type"])))
+        (is (str/includes? (:body page) "<details open>"))
+        (is (= 303 (:status generated)))
+        (is (= "/" (get-in generated [:headers "Location"])))
+        (is (= 1 @flushes))))
     (testing "validated trace identifiers"
       (let [response (h {:request-method :get
                          :uri "/api/traces/0123456789abcdef0123456789abcdef"})
@@ -55,7 +72,7 @@
       (is (= 400 (:status (h {:request-method :get :uri "/api/traces/ABC"}))))
       (is (= 400 (:status (h {:request-method :get :uri "/api/traces/../../etc"})))))
     (testing "method and route errors"
-      (is (= 405 (:status (h {:request-method :post :uri "/work"}))))
+      (is (= 405 (:status (h {:request-method :post :uri "/api/logs"}))))
       (is (= 404 (:status (h {:request-method :get :uri "/missing"})))))))
 
 (deftest work-failure-is-bounded
@@ -81,15 +98,36 @@
                          :children first :spanId))))))
 
 (deftest dashboard-trace-viewer-contract
-  (let [body (:body ((demo/handler (test-app))
-                     {:request-method :get :uri "/"}))]
-    (is (str/includes? body "function buildTree(spans)"))
-    (is (str/includes? body "path.has(id)"))
-    (is (str/includes? body "detail.spanTree"))
-    (is (str/includes? body "node('div','timeline-bar')"))
-    (is (str/includes? body "span.status==='error'"))
-    (is (str/includes? body "textContent"))
-    (is (not (str/includes? body "innerHTML")))))
+  (let [response ((demo/handler (test-app))
+                  {:request-method :get :uri "/"})
+        body (:body response)]
+    (is (str/includes? body "<main class=\"otel-viewer\">"))
+    (is (str/includes? body ".otel-viewer{"))
+    (is (str/includes? body "<form action=\"/work\" method=\"post\">"))
+    (is (str/includes? body "<a href=\"/traces/0123456789abcdef0123456789abcdef\">"))
+    (is (str/includes? (get-in response [:headers "Content-Security-Policy"])
+                       "default-src 'none'"))
+    (is (not (str/includes? body "<script")))
+    (is (not (str/includes? body "innerHTML"))))
+  (testing "the reusable fragment escapes telemetry and needs no document shell"
+    (let [body (viewer/render-fragment
+                 {:summary sample-summary :traces []
+                  :logs [{:body "</span><script>alert(1)</script>"
+                          :severity "WARN" :timestamp "now"}]})]
+      (is (str/starts-with? body "<main class=\"otel-viewer\">"))
+      (is (str/includes? body "&lt;script&gt;alert(1)&lt;/script&gt;"))
+      (is (not (str/includes? body "<script")))))
+  (testing "a host can mount the fragment below its own route"
+    (let [body (viewer/render-fragment
+                 {:base-path "observability/" :work-path "/work"
+                  :summary sample-summary
+                  :traces (conj sample-traces {:traceId "not-a-trace-id"})
+                  :logs []})]
+      (is (str/includes? body "href=\"/observability\""))
+      (is (str/includes? body "action=\"/observability/work\""))
+      (is (str/includes? body
+                         "href=\"/observability/traces/0123456789abcdef0123456789abcdef\""))
+      (is (not (str/includes? body "not-a-trace-id"))))))
 
 (deftest live-loopback-integration
   (let [port (+ 24000 (rand-int 3000))
@@ -130,5 +168,19 @@
           (is (= (:spanId client) (:parentSpanId upstream)))
           (is (some #(and (= (:traceId detail) (:traceId %))
                           (not= "" (:spanId %))) (:logs detail))
-              "the trace detail API returns a correlated log")))
+              "the trace detail API returns a correlated log")
+          (let [page (http-client/get (str base "/traces/" trace-id))]
+            (is (= 200 (:status page)))
+            (is (str/includes? (:body page) "<details open>"))
+            (is (str/includes? (:body page) "HTTP GET /upstream"))
+            (is (not (str/includes? (:body page) "<script"))))
+          (let [before-post (:traceCount (decode (http-client/get (str base "/api/summary"))))
+                generated (http-client/post (str base "/work")
+                                            {:follow-redirects false
+                                             :throw-exceptions false})
+                after-post (:traceCount (decode (http-client/get (str base "/api/summary"))))]
+            (is (= 303 (:status generated)))
+            (is (= "/" (get-in generated [:headers "location"])))
+            (is (= (inc before-post) after-post)
+                "POST returns only after its request span is durably flushed"))))
       (finally (demo/stop! lifecycle)))))

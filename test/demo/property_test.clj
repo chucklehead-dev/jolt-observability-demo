@@ -4,7 +4,8 @@
             [demo.main :as demo]
             [hegel.core :as h]
             [hegel.generator :as g]
-            [jdbc.core :as jdbc]))
+            [jdbc.core :as jdbc]
+            [otel.viewer :as viewer]))
 
 (defn- fail! [origin message data]
   (throw (ex-info message (assoc data :hegel/origin origin))))
@@ -65,6 +66,7 @@
      (let [method (h/draw! (g/sampled-from [:get :post :put :delete :patch]))
            [path get-status]
            (h/draw! (g/sampled-from [["/" 200]
+                                     ["/traces/0123456789abcdef0123456789abcdef" 200]
                                      ["/api/summary" 200]
                                      ["/api/traces" 200]
                                      ["/api/logs" 200]
@@ -74,7 +76,10 @@
                                      ["/api/traces/not-hex" 400]]))
            response ((demo/raw-handler (app-with {}))
                      {:request-method method :uri path})
-           expected (if (= method :get) get-status 405)]
+           expected (cond
+                      (= method :get) get-status
+                      (and (= method :post) (= path "/work")) 303
+                      :else 405)]
        (check! (= expected (:status response))
                "demo/route-method-status" "route status matrix changed"
                {:method method :path path :expected expected
@@ -82,11 +87,31 @@
        (check! (= "no-store" (get-in response [:headers "Cache-Control"]))
                "demo/cache-control" "response became cacheable"
                {:method method :path path})
-       (when (not= path "/")
-         (check! (= "application/json; charset=UTF-8"
+       (let [html? (or (and (= method :get) (= path "/"))
+                       (and (= method :get) (str/starts-with? path "/traces/"))
+                       (and (= method :post) (= path "/work")))]
+         (check! (= (if html? "text/html; charset=UTF-8"
+                        "application/json; charset=UTF-8")
                     (get-in response [:headers "Content-Type"]))
-                 "demo/content-type" "API response is not JSON"
-                 {:method method :path path}))))))
+                 "demo/content-type" "route returned the wrong representation"
+                 {:method method :path path :html? html?}))))))
+
+(defn- escaped-viewer-property []
+  (h/run-test!
+   {:name "demo viewer escapes telemetry"
+    :database "" :verbosity :quiet :derandomize? true :test-cases 120}
+   (fn [_]
+     (let [suffix (h/draw! (g/string {:max-size 64}))
+           hostile (str "</span><script>" suffix "</script>")
+           html (viewer/render-fragment
+                  {:summary {} :traces []
+                   :logs [{:timestamp "now" :severity "WARN" :body hostile}]})]
+       (check! (not (str/includes? html "<script>"))
+               "demo/viewer-script-injection"
+               "telemetry became active viewer markup" {:suffix suffix})
+       (check! (str/includes? html "&lt;script&gt;")
+               "demo/viewer-escaped-sentinel"
+               "escaped telemetry sentinel disappeared" {:suffix suffix})))))
 
 (defn- bounded-json-property []
   (h/run-test!
@@ -131,6 +156,10 @@
                       (str/includes? logs-query "LIMIT 100"))
                  "demo/query-row-limit" "list query lost its fixed row limit"
                  {})
+         (check! (and (str/includes? (first span-query) "LIMIT 1000")
+                      (str/includes? (first log-query) "LIMIT 500"))
+                 "demo/detail-query-row-limit"
+                 "trace detail query lost its fixed row limit" {})
          (check! (= [trace-id trace-id]
                     [(second span-query) (second log-query)])
                  "demo/query-parameter" "trace id was not bound as a parameter"
@@ -143,5 +172,6 @@
 (defn run-properties! []
   [{:label "trace-id boundary" :result (trace-id-boundary-property)}
    {:label "route/method matrix" :result (route-method-property)}
+   {:label "viewer escaping" :result (escaped-viewer-property)}
    {:label "bounded JSON" :result (bounded-json-property)}
    {:label "bounded parameterized queries" :result (bounded-query-property)}])

@@ -1,11 +1,19 @@
-{:paths ["src"]
+{:paths ["src" "resources"]
 
  :deps {jolt-lang/jolt-http {:local/root "/home/chuck/ai-src/jolt-http"}
         jolt-lang/http-client {:local/root "/home/chuck/ai-src/http-client"}
         io.github.jolt-lang/otel {:local/root "/home/chuck/ai-src/jolt-otel"}
         io.github.jolt-lang/chdb {:local/root "/home/chuck/ai-src/jolt-chdb"}
         io.github.jolt-lang/otel-clickhouse {:local/root "/home/chuck/ai-src/jolt-otel-clickhouse"}
-        org.clojure/data.json {:local/root "/home/chuck/ai-src/data.json"}}
+        org.clojure/data.json {:local/root "/home/chuck/ai-src/data.json"}
+        jolt-lang/time {:git/url "https://github.com/jolt-lang/time.git"
+                        :git/sha "70dfb7981ef4ed70c5d142109d56a90edfb79cef"}
+        jolt-lang/jolt-crypto {:git/url "https://github.com/jolt-lang/jolt-crypto"
+                               :git/sha "0adae49db6064180374ffdcfc72b5b9ac01888cd"}
+        yogthos/selmer {:git/url "https://github.com/yogthos/Selmer"
+                        :git/sha "fa4a42e77b48905f87b3bf0dc1c698f2c329c722"}}
+
+ :jolt/build {:embed ["resources"]}
 
  :aliases {:test {:extra-paths ["test"]
                   :extra-deps
