@@ -19,10 +19,14 @@
   (delay (slurp (io/resource "otel/viewer/fragment.html"))))
 (def ^:private page-template
   (delay (slurp (io/resource "otel/viewer/page.html"))))
+(def ^:private live-template
+  (delay (slurp (io/resource "otel/viewer/live.html"))))
 (def ^:private stylesheet
   (delay (slurp (io/resource "otel/viewer/viewer.css"))))
 (def ^:private enhancement
   (delay (slurp (io/resource "otel/viewer/viewer.js"))))
+(def ^:private datastar-client
+  (delay (slurp (io/resource "otel/viewer/datastar.js"))))
 
 (defn styles
   "Scoped viewer CSS for a host that embeds `render-fragment`."
@@ -34,6 +38,11 @@
   Hosts may serve this as a static JavaScript response; fragments work without it."
   []
   @enhancement)
+
+(defn datastar-client-script
+  "Vendored Datastar client used by the optional live-region enhancement."
+  []
+  @datastar-client)
 
 (defn- text [value]
   (if (nil? value) "" (str value)))
@@ -117,32 +126,41 @@
    :severity (text (:severity log))
    :body (text (:body log))})
 
-(defn- index-model [{:keys [title base-path work-path enhancement-path
+(defn- index-model [{:keys [title base-path work-path enhancement-path live-attributes
                             summary traces logs]}]
-  (let [base (normalize-base-path base-path)]
+  (let [base (normalize-base-path base-path)
+        trace-views
+        (into []
+              (comp
+               (filter #(re-matches trace-id-pattern (text (:traceId %))))
+               (map (fn [trace]
+                      {:href (mounted-path base (str "/traces/" (text (:traceId trace))))
+                       :rootName (text (or (:rootSpan trace) "(root span)"))
+                       :service (text (:service trace))
+                       :startedAt (text (:startedAt trace))
+                       :spanCount (or (:spanCount trace) 0)
+                       :status (text (:status trace))
+                       :statusClass (status-class (:status trace))})))
+              traces)
+        log-views (mapv log-view logs)]
     {:title (text (or title "Jolt Observability"))
      :homePath (if (str/blank? base) "/" base)
      :workPath (when work-path (mounted-path base work-path))
      :enhanced (boolean enhancement-path)
      :enhancementPath (when enhancement-path
                         (mounted-path base enhancement-path))
+     :streaming (boolean live-attributes)
+     :datastarSignals (text (:data-signals live-attributes))
+     :datastarInit (text (:data-init live-attributes))
+     :datastarOnline (text (get live-attributes "data-on:online__window"))
      :stats [{:label "Traces" :value (or (:traceCount summary) 0)}
              {:label "Spans" :value (or (:spanCount summary) 0)}
              {:label "Logs" :value (or (:logCount summary) 0)}
              {:label "Errors" :value (or (:errorCount summary) 0)}]
-     :traces (into []
-                   (comp
-                     (filter #(re-matches trace-id-pattern (text (:traceId %))))
-                     (map (fn [trace]
-                            {:href (mounted-path base (str "/traces/" (text (:traceId trace))))
-                             :rootName (text (or (:rootSpan trace) "(root span)"))
-                             :service (text (:service trace))
-                             :startedAt (text (:startedAt trace))
-                             :spanCount (or (:spanCount trace) 0)
-                             :status (text (:status trace))
-                             :statusClass (status-class (:status trace))})))
-                   traces)
-     :logs (mapv log-view logs)}))
+     :hasTraces (boolean (seq trace-views))
+     :traces trace-views
+     :hasLogs (boolean (seq log-views))
+     :logs log-views}))
 
 (defn- trace-model [{:keys [title base-path work-path trace]}]
   (let [flat (-> (:spanTree trace) flatten-tree with-timeline)
@@ -158,7 +176,9 @@
              :rootName (text (or (:name root) "Trace detail"))
              :status status
              :statusClass (status-class status)
+             :hasSpans (boolean (seq flat))
              :spans (mapv span-view flat)
+             :hasLogs (boolean (seq (:logs trace)))
              :logs (mapv log-view (:logs trace))}}))
 
 (defn render-fragment
@@ -166,8 +186,19 @@
   `:base-path` defaults to the site root; `:work-path` is optional."
   [model]
   (selmer-util/with-escaping
-    (selmer/render @fragment-template
-                   (if (:trace model) (trace-model model) (index-model model)))))
+    (if (:trace model)
+      (selmer/render @fragment-template (trace-model model))
+      (let [page-model (index-model model)
+            live-content (selmer/render @live-template page-model)]
+        (selmer/render @fragment-template
+                       (assoc page-model :liveContent [:safe live-content]))))))
+
+(defn render-live-content
+  "Render the bounded stats, traces, and logs inside `#otel-live`. This is the
+  server-rendered payload used for Datastar patches and contains no scripts."
+  [model]
+  (selmer-util/with-escaping
+    (selmer/render @live-template (index-model model))))
 
 (defn render-page
   "Render a complete standalone HTML document from the same model accepted by
@@ -181,5 +212,7 @@
                      {:title title
                       :styles [:safe @stylesheet]
                       :content [:safe fragment]
+                      :datastarPath (when-let [path (:datastar-path model)]
+                                      (mounted-path base path))
                       :enhancementPath (when-let [path (:enhancement-path model)]
                                          (mounted-path base path))}))))

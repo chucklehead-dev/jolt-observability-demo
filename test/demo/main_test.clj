@@ -2,8 +2,10 @@
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [demo.datastar :as demo-datastar]
             [demo.main :as demo]
             [jolt.http-client :as http-client]
+            [jolt.http.body :as http-body]
             [otel.sdk :as sdk]
             [otel.viewer :as viewer]))
 
@@ -55,6 +57,9 @@
         (is (= "text/javascript; charset=UTF-8"
                (get-in script [:headers "Content-Type"])))
         (is (str/includes? (:body script) "dialog.showModal()")))
+      (let [script (h {:request-method :get :uri "/assets/datastar.js"})]
+        (is (= 200 (:status script)))
+        (is (str/starts-with? (:body script) "// Datastar v1.0.2")))
       (is (= {:ok true :upstream {:ok true}}
              (decode (h {:request-method :get :uri "/work"})))))
     (testing "HTML trace viewer and form action"
@@ -122,6 +127,10 @@
     (is (str/includes? body
                        "href=\"/traces/0123456789abcdef0123456789abcdef\" data-otel-trace"))
     (is (str/includes? body "<dialog class=\"otel-trace-dialog\""))
+    (is (str/includes? body "id=\"otel-live\" data-signals="))
+    (is (str/includes? body "datastar-sse=true"))
+    (is (str/includes? body
+                       "<script type=\"module\" src=\"/assets/datastar.js\"></script>"))
     (is (str/includes? body
                        "<script src=\"/assets/otel-viewer.js\" defer></script>"))
     (is (str/includes? (get-in response [:headers "Content-Security-Policy"])
@@ -138,6 +147,12 @@
       (is (str/includes? body "&lt;script&gt;alert(1)&lt;/script&gt;"))
       (is (not (str/includes? body "<dialog")))
       (is (not (str/includes? body "<script")))))
+  (testing "empty collections render explicit accessible states"
+    (let [body (viewer/render-fragment
+                {:summary {} :traces [] :logs []})]
+      (is (str/includes? body "No traces yet. Generate work to begin."))
+      (is (str/includes? body "No logs yet."))
+      (is (not (str/includes? body "<ol class=\"otel-trace-list\">")))))
   (testing "a host can mount the fragment below its own route"
     (let [body (viewer/render-fragment
                  {:base-path "observability/" :work-path "/work"
@@ -149,6 +164,40 @@
       (is (str/includes? body
                          "href=\"/observability/traces/0123456789abcdef0123456789abcdef\""))
       (is (not (str/includes? body "not-a-trace-id"))))))
+
+(deftest datastar-live-region-contract
+  (let [state (demo-datastar/stream-state
+               {:interval-ms 0 :heartbeat-ms 10000 :max-streams 1})
+        renders (atom 0)
+        writes (atom [])
+        response (demo-datastar/stream-response
+                  state #(str "<p>snapshot-" (swap! renders inc) "</p>"))
+        second-response (demo-datastar/stream-response state (constantly "full"))
+        sink (reify http-body/Sink
+               (sink-write! [_ bytes offset length]
+                 (swap! writes conj
+                        (String. bytes offset length "UTF-8"))
+                 (when (= 2 (count @writes))
+                   (throw (ex-info "peer closed" {}))))
+               (sink-close! [_] nil))]
+    (is (= "text/event-stream; charset=utf-8"
+           (get-in response [:headers "Content-Type"])))
+    (is (= 503 (:status second-response)) "normal requests retain worker capacity")
+    (try
+      (http-body/write-body-to-sink (:body response) response sink)
+      (is false "the simulated peer close must end the stream")
+      (catch Throwable _))
+    (is (= 0 @(:active state)) "disconnect releases the stream permit")
+    (is (= 2 (count @writes)))
+    (is (every? #(str/includes? % "event: datastar-patch-elements") @writes))
+    (is (every? #(str/includes? % "data: selector #otel-live") @writes))
+    (is (str/includes? (first @writes) "snapshot-1"))
+    (is (str/includes? (second @writes) "snapshot-2")))
+  (is (demo-datastar/sse-request?
+       {:query-string "x=1&datastar-sse=true&datastar-selector=%0Aevent:evil"}))
+  (is (not (demo-datastar/sse-request?
+            {:query-string "datastar-sse=true%0Aevent:evil"}))
+      "only the exact flag is recognized; selector input is ignored"))
 
 (deftest live-loopback-integration
   (let [port (+ 24000 (rand-int 3000))
@@ -162,6 +211,20 @@
             _ (http-client/get (str base "/api/summary"))
             _ (http-client/get (str base "/api/traces"))
             _ (http-client/get (str base "/api/logs"))
+            _ (http-client/get (str base "/"))
+            _ (http-client/get (str base "/assets/datastar.js"))
+            sse ((demo/handler (:app lifecycle))
+                 {:request-method :get :uri "/"
+                  :query-string "datastar-sse=true"
+                  :headers {}})
+            _ (try
+                (http-body/write-body-to-sink
+                 (:body sse) sse
+                 (reify http-body/Sink
+                   (sink-write! [_ _ _ _]
+                     (throw (ex-info "test reader closed" {})))
+                   (sink-close! [_] nil)))
+                (catch Throwable _))
             _ (is (true? (sdk/force-flush! (:otel lifecycle))))
             before (decode (http-client/get (str base "/api/summary")))
             work (http-client/get (str base "/work")
@@ -169,7 +232,7 @@
                                    :conn-timeout 2000 :socket-timeout 5000
                                    :throw-exceptions false})]
         (is (= 0 (:traceCount before))
-            "dashboard polling does not create self-observation traces")
+            "viewer pages, assets, APIs, and SSE rendering create no recursive traces")
         (is (= 200 (:status work)))
         (is (true? (sdk/force-flush! (:otel lifecycle))))
         (let [traces (decode (http-client/get (str base "/api/traces")))

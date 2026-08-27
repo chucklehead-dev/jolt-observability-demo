@@ -5,6 +5,12 @@
         io.github.jolt-lang/otel {:local/root "/home/chuck/ai-src/jolt-otel"}
         io.github.jolt-lang/chdb {:local/root "/home/chuck/ai-src/jolt-chdb"}
         io.github.jolt-lang/otel-clickhouse {:local/root "/home/chuck/ai-src/jolt-otel-clickhouse"}
+        jolt-lang/glimmer-datastar
+        {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
+         :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}
+        ;; Direct root override includes the timed-deref compatibility fix at
+        ;; local commit 6dab559; replace with its upstream SHA after publishing.
+        jolt-lang/glimmer {:local/root "/home/chuck/ai-src/glimmer"}
         org.clojure/data.json {:local/root "/home/chuck/ai-src/data.json"}
         jolt-lang/time {:git/url "https://github.com/jolt-lang/time.git"
                         :git/sha "70dfb7981ef4ed70c5d142109d56a90edfb79cef"}

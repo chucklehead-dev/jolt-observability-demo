@@ -2,6 +2,7 @@
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [db.jdbc]
+            [demo.datastar :as demo-datastar]
             [jdbc.chdb]
             [jdbc.core :as jdbc]
             [jolt.http-client :as http-client]
@@ -165,6 +166,7 @@
         (str/starts-with? path "/api/traces/") "/api/traces/:trace-id"
         (= path "/api/logs") "/api/logs"
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
+        (= path "/assets/datastar.js") "/assets/datastar.js"
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/work") "/work"
         (= path "/upstream") "/upstream"
@@ -197,13 +199,14 @@
 (defn app-context
   "Build the handler context. Query and work functions are injectable so pure
   Ring tests need neither native state nor a live socket."
-  [{:keys [connection port tracer logger propagator flush-fn
+  [{:keys [connection port tracer logger propagator flush-fn stream-state
            summary-fn traces-fn trace-fn logs-fn work-fn]
     :or {port 8080}}]
   {:connection connection :port port
    :tracer (or tracer (sdk/tracer "demo.http"))
    :logger (or logger (sdk/logger "demo.http"))
    :propagator (or propagator propagation/default-propagator)
+   :stream-state (or stream-state (demo-datastar/stream-state))
    :flush-fn (or flush-fn (constantly true))
    :summary-fn (or summary-fn #(query-summary connection))
    :traces-fn (or traces-fn #(query-traces connection))
@@ -211,8 +214,8 @@
    :logs-fn (or logs-fn #(query-logs connection))
    :work-fn (or work-fn real-work!)})
 
-(defn raw-handler [{:keys [summary-fn traces-fn trace-fn logs-fn work-fn logger] :as app}]
-  (fn [{:keys [request-method uri]}]
+(defn raw-handler [{:keys [summary-fn traces-fn trace-fn logs-fn work-fn logger stream-state] :as app}]
+  (fn [{:keys [request-method uri] :as request}]
     (cond
       (and (= :post request-method) (= uri "/work"))
       (try
@@ -231,13 +234,23 @@
       :else
       (cond
         (= uri "/")
-        (html-response
-          (viewer/render-page {:title "Jolt Observability"
-                               :work-path "/work"
-                               :enhancement-path "/assets/otel-viewer.js"
-                               :summary (summary-fn)
-                               :traces (traces-fn)
-                               :logs (logs-fn)}))
+        (if (demo-datastar/sse-request? request)
+          (demo-datastar/stream-response
+           stream-state
+           #(viewer/render-live-content
+             {:enhancement-path "/assets/otel-viewer.js"
+              :summary (summary-fn)
+              :traces (traces-fn)
+              :logs (logs-fn)}))
+          (html-response
+            (viewer/render-page {:title "Jolt Observability"
+                                 :work-path "/work"
+                                 :enhancement-path "/assets/otel-viewer.js"
+                                 :datastar-path "/assets/datastar.js"
+                                 :live-attributes (demo-datastar/init-attributes)
+                                 :summary (summary-fn)
+                                 :traces (traces-fn)
+                                 :logs (logs-fn)})))
         (str/starts-with? uri "/traces/")
         (if-let [trace-id (viewer-trace-id-path uri)]
           (html-response
@@ -247,6 +260,8 @@
           (error-response 400 "trace id must be 32 lowercase hex characters"))
         (= uri "/assets/otel-viewer.js")
         {:status 200 :headers javascript-headers :body (viewer/enhancement-script)}
+        (= uri "/assets/datastar.js")
+        {:status 200 :headers javascript-headers :body (viewer/datastar-client-script)}
         (= uri "/api/summary") (json-response (summary-fn))
         (= uri "/api/traces") (json-response (traces-fn))
         (= uri "/api/logs") (json-response (logs-fn))
@@ -275,6 +290,7 @@
             viewer-route? (or (= route "/")
                               (= route "/traces/:trace-id")
                               (= route "/assets/otel-viewer.js")
+                              (= route "/assets/datastar.js")
                               (str/starts-with? route "/api/"))
             response (if viewer-route?
                        (dispatch request)

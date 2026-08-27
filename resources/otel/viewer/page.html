@@ -8,6 +8,7 @@
   </head>
   <body>
     {{content}}
+    {% if datastarPath %}<script type="module" src="{{datastarPath}}"></script>{% endif %}
     {% if enhancementPath %}<script src="{{enhancementPath}}" defer></script>{% endif %}
   </body>
 </html>

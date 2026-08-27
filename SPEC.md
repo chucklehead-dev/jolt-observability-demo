@@ -54,12 +54,21 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   `SpanKind`, `Duration`, `StatusCode`, `StatusMessage`, `Body`,
   `SeverityText`, and attribute maps.
 - The UI must still render an empty state before any `/work` request.
+- The initial viewer is complete server-rendered HTML. When Datastar is
+  available, a bounded SSE stream refreshes only `#otel-live` from durable chDB
+  snapshots every 750ms and emits a 10s heartbeat. At most eight streams may be
+  active, leaving normal jolt-http worker capacity reserved.
+- Viewer HTML, assets, JSON APIs, trace detail, and SSE snapshot rendering are
+  excluded from instrumentation so observing telemetry cannot recursively
+  generate more viewer telemetry.
 
 ## Verification
 
 - Pure handler tests cover HTML and JSON representations, 200/303/400/404/405
   behavior, hostile-value escaping, semantic markup, the zero-JavaScript
   fallback, and the reusable fragment renderer.
+- Datastar stream tests cover the fixed selector, bounded admission, changing
+  snapshots, disconnect cleanup, and rejection of malformed SSE flags.
 - An integration test starts the server on a non-default port, calls `/work`
   with `jolt.http-client`, flushes telemetry, and proves the complete external
   parent/server/client/upstream parent chain, correlated logs, and HTML detail.
@@ -75,6 +84,12 @@ seams over bounded host-supplied data. The optional enhancement opens trace
 links in a native dialog with native focus management and Escape-to-close.
 Ordinary trace links and the explicit `All traces` link remain the fallback
 when scripts or native dialog support are unavailable.
+
+The demo vendors the official Datastar 1.0.2 client and uses
+`jolt-lang/glimmer-datastar` for initialization and v1 patch-event encoding.
+Its bounded streaming body is currently a jolt-http-specific adapter; a host
+must choose stream capacity relative to its worker pool rather than inheriting
+the demo's eight-stream limit blindly.
 A host such as Samizdat owns routing, authentication/CSRF, database queries, and
 work actions; it can mount the fragment under its own shell without adopting
 the demo lifecycle.
