@@ -8,7 +8,9 @@
 
 (def default-options
   {:interval-ms 750
-   :heartbeat-ms 10000
+   ;; Keep this below jolt-http's default 5s stop deadline so an unchanged
+   ;; stream observes a disconnected peer before shutdown expires.
+   :heartbeat-ms 2000
    :max-streams 8})
 
 (defn stream-state

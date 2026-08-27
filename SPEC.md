@@ -56,7 +56,9 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - The UI must still render an empty state before any `/work` request.
 - The initial viewer is complete server-rendered HTML. When Datastar is
   available, a bounded SSE stream refreshes only `#otel-live` from durable chDB
-  snapshots every 750ms and emits a 10s heartbeat. At most eight streams may be
+  snapshots every 750ms and emits a 2s heartbeat. Keeping the heartbeat below
+  the HTTP server's shutdown deadline prevents disconnected unchanged streams
+  from stranding shutdown workers. At most eight streams may be
   active, leaving normal jolt-http worker capacity reserved.
 - Viewer HTML, assets, JSON APIs, trace detail, and SSE snapshot rendering are
   excluded from instrumentation so observing telemetry cannot recursively
@@ -72,6 +74,12 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - An integration test starts the server on a non-default port, calls `/work`
   with `jolt.http-client`, flushes telemetry, and proves the complete external
   parent/server/client/upstream parent chain, correlated logs, and HTML detail.
+- `scripts/probe-threadstatus.sh` runs startup, ordinary work, viewer polling,
+  SSE disconnect, concurrent SSE/work, and a mixed stress scenario in separate
+  fresh Jolt processes. It preserves per-scenario stdout/stderr evidence and
+  fails if the native ClickHouse `ThreadStatus` diagnostic appears.
+  `THREADSTATUS_PROBE_SCENARIOS` selects cases and
+  `THREADSTATUS_PROBE_REPEAT` repeats each in a fresh process for soak runs.
 - All commands use `/home/chuck/ai-src/tools/jolt-with-chez-10.4.1` and writable
   cache directories. Verification does not publish, push, or modify local
   dependencies.

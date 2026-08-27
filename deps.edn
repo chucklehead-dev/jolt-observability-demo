@@ -26,6 +26,9 @@
                   {io.github.chucklehead-dev/jolt-hegel
                    {:git/url "https://github.com/chucklehead-dev/jolt-hegel.git"
                     :git/sha "53631c81cd927175935037699ddf687d98a44d24"}}
-                  :main-opts ["-m" "demo.test-runner"]}}
+                  :main-opts ["-m" "demo.test-runner"]}
+           :threadstatus-probe
+           {:extra-paths ["test"]
+            :main-opts ["-m" "demo.threadstatus-probe"]}}
 
  :tasks {test "jolt -M:test"}}
