@@ -132,10 +132,10 @@
     (is (str/includes? body
                        "href=\"/traces/0123456789abcdef0123456789abcdef\" data-otel-trace"))
     (is (str/includes? body "<dialog class=\"otel-trace-dialog\""))
-    (is (str/includes? body "id=\"otel-live\" data-signals="))
-    (is (str/includes? body "datastar-sse=true"))
-    (is (str/includes? body
-                       "<script type=\"module\" src=\"/assets/datastar.js\"></script>"))
+    (is (str/includes? body "id=\"otel-live\" data-otel-live=\"true\""))
+    (is (str/includes? (viewer/enhancement-script) "new EventSource"))
+    (is (str/includes? (viewer/enhancement-script) "datastar-sse"))
+    (is (not (str/includes? body "/assets/datastar.js")))
     (is (str/includes? body
                        "<script src=\"/assets/otel-viewer.js\" defer></script>"))
     (is (str/includes? (get-in response [:headers "Content-Security-Policy"])

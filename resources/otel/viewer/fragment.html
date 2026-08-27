@@ -48,7 +48,7 @@
   </section>
   {% endif %}
   {% else %}
-  <div id="otel-live"{% if streaming %} data-signals="{{datastarSignals}}" data-init="{{datastarInit}}" data-on:online__window="{{datastarOnline}}"{% endif %}>{{liveContent}}</div>
+  <div id="otel-live"{% if streaming %} data-otel-live="{{liveMarker}}"{% endif %}>{{liveContent}}</div>
   {% if enhanced %}
   <dialog class="otel-trace-dialog" data-otel-dialog aria-label="Trace detail">
     <form method="dialog"><button class="otel-dialog-close" type="submit">Close <kbd>Esc</kbd></button></form>

@@ -248,7 +248,6 @@
             (viewer/render-page {:title "Jolt Observability"
                                  :work-path "/work"
                                  :enhancement-path "/assets/otel-viewer.js"
-                                 :datastar-path "/assets/datastar.js"
                                  :live-attributes (demo-datastar/init-attributes)
                                  :summary (summary-fn)
                                  :traces (traces-fn)

@@ -1,4 +1,36 @@
 (() => {
+  const live = document.querySelector("#otel-live[data-otel-live]");
+  let liveSource;
+
+  const closeLive = () => {
+    liveSource?.close();
+    liveSource = undefined;
+  };
+
+  const openLive = () => {
+    if (!live || liveSource || document.hidden) return;
+    const url = new URL(location.href);
+    url.searchParams.set("datastar-sse", "true");
+    liveSource = new EventSource(url);
+    liveSource.addEventListener("datastar-patch-elements", (event) => {
+      const lines = event.data.split("\n");
+      const selector = lines.find((line) => line.startsWith("selector "))?.slice(9);
+      const elements = lines
+        .filter((line) => line.startsWith("elements "))
+        .map((line) => line.slice(9))
+        .join("\n");
+      if (selector !== "#otel-live") return;
+      const parsed = new DOMParser().parseFromString(elements, "text/html");
+      live.replaceChildren(...Array.from(parsed.body.childNodes));
+    });
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) closeLive(); else openLive();
+  });
+  window.addEventListener("online", openLive);
+  openLive();
+
   document.addEventListener("submit", async (event) => {
     const form = event.target.closest?.("form[data-otel-work]");
     if (!form) return;

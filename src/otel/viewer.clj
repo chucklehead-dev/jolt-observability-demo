@@ -150,9 +150,7 @@
      :enhancementPath (when enhancement-path
                         (mounted-path base enhancement-path))
      :streaming (boolean live-attributes)
-     :datastarSignals (text (:data-signals live-attributes))
-     :datastarInit (text (:data-init live-attributes))
-     :datastarOnline (text (get live-attributes "data-on:online__window"))
+     :liveMarker (text (get live-attributes "data-otel-live"))
      :stats [{:label "Traces" :value (or (:traceCount summary) 0)}
              {:label "Spans" :value (or (:spanCount summary) 0)}
              {:label "Logs" :value (or (:logCount summary) 0)}

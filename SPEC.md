@@ -100,8 +100,10 @@ links in a native dialog with native focus management and Escape-to-close.
 Ordinary trace links and the explicit `All traces` link remain the fallback
 when scripts or native dialog support are unavailable.
 
-The demo vendors the official Datastar 1.0.2 client and uses
-`jolt-lang/glimmer-datastar` for initialization and v1 patch-event encoding.
+The demo uses `jolt-lang/glimmer-datastar` for v1 patch-event encoding. Its
+small external viewer script opens and applies those events without Datastar's
+expression evaluator, preserving the strict `script-src 'self'` CSP without
+requiring `unsafe-eval`.
 Its bounded streaming body is currently a jolt-http-specific adapter; a host
 must choose stream capacity relative to its worker pool rather than inheriting
 the demo's eight-stream limit blindly.

@@ -20,9 +20,9 @@
     :active (atom 0)}))
 
 (defn init-attributes
-  "Datastar attributes that progressively open the same-page live stream."
+  "CSP-safe marker consumed by the external viewer enhancement script."
   []
-  (datastar/init-opts {:selector "#otel-live"}))
+  {"data-otel-live" "true"})
 
 (defn sse-request?
   "True only for the exact Datastar SSE query flag. Selector and patch mode are
