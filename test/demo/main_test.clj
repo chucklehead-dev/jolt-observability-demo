@@ -113,6 +113,10 @@
                   {:request-method :get :uri "/"})
         body (:body response)]
     (is (str/includes? body "<main class=\"otel-viewer\">"))
+    (is (str/includes? body "<html class=\"otel-page\" lang=\"en\">"))
+    (is (str/includes? body
+                       ".otel-page body{min-height:100vh;margin:0;background:#080d18;color:#f2f6ff}"))
+    (is (str/includes? body "--otel-muted:#b6c2d9"))
     (is (str/includes? body ".otel-viewer{"))
     (is (str/includes? body "<form action=\"/work\" method=\"post\">"))
     (is (str/includes? body
