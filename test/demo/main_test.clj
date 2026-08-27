@@ -57,9 +57,6 @@
         (is (= "text/javascript; charset=UTF-8"
                (get-in script [:headers "Content-Type"])))
         (is (str/includes? (:body script) "dialog.showModal()")))
-      (let [script (h {:request-method :get :uri "/assets/datastar.js"})]
-        (is (= 200 (:status script)))
-        (is (str/starts-with? (:body script) "// Datastar v1.0.2")))
       (is (= {:ok true :upstream {:ok true}}
              (decode (h {:request-method :get :uri "/work"})))))
     (testing "HTML trace viewer and form action"
@@ -137,7 +134,7 @@
     (is (str/includes? (viewer/enhancement-script) "datastar-sse"))
     (is (not (str/includes? body "/assets/datastar.js")))
     (is (str/includes? body
-                       "<script src=\"/assets/otel-viewer.js\" defer></script>"))
+                       "<script src=\"/assets/otel-viewer.js?v=2\" defer></script>"))
     (is (str/includes? (get-in response [:headers "Content-Security-Policy"])
                        "default-src 'none'"))
     (is (str/includes? (get-in response [:headers "Content-Security-Policy"])
@@ -217,7 +214,6 @@
             _ (http-client/get (str base "/api/traces"))
             _ (http-client/get (str base "/api/logs"))
             _ (http-client/get (str base "/"))
-            _ (http-client/get (str base "/assets/datastar.js"))
             sse ((demo/handler (:app lifecycle))
                  {:request-method :get :uri "/"
                   :query-string "datastar-sse=true"

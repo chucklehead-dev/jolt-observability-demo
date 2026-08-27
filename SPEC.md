@@ -93,15 +93,16 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 
 ## Adoption boundaries
 
+The local `io.github.jolt-lang/otel-viewer` package supplies
 `otel.viewer/render-fragment`, `otel.viewer/render-page`,
-`otel.viewer/styles`, and `otel.viewer/enhancement-script` are pure rendering
+`otel.viewer/styles`, and `otel.viewer/enhancement-script` as pure rendering
 seams over bounded host-supplied data. The optional enhancement opens trace
 links in a native dialog with native focus management and Escape-to-close.
 Ordinary trace links and the explicit `All traces` link remain the fallback
 when scripts or native dialog support are unavailable.
 
 The demo uses `jolt-lang/glimmer-datastar` for v1 patch-event encoding. Its
-small external viewer script opens and applies those events without Datastar's
+small viewer-package script opens and applies those events without Datastar's
 expression evaluator, preserving the strict `script-src 'self'` CSP without
 requiring `unsafe-eval`.
 Its bounded streaming body is currently a jolt-http-specific adapter; a host

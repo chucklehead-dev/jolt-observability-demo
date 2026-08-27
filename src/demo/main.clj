@@ -49,7 +49,7 @@
   (let [spans (first (jdbc/fetch conn
                        "SELECT uniqExactIf(TraceId, TraceId != '') AS traceCount,
                                count() AS spanCount,
-                               countIf(StatusCode = 'error') AS errorCount
+                               countIf(lower(StatusCode) = 'error') AS errorCount
                           FROM otel_traces"))
         log-count (value-of (first (jdbc/fetch conn "SELECT count() AS logCount FROM otel_logs")) :logCount)]
     {:traceCount (or (value-of spans :traceCount) 0)
@@ -72,7 +72,7 @@
                   argMin(ServiceName, Timestamp) AS service,
                   argMin(SpanName, Timestamp) AS rootSpan,
                   count() AS spanCount,
-                  if(countIf(StatusCode = 'error') > 0, 'error', 'ok') AS status
+                  if(countIf(lower(StatusCode) = 'error') > 0, 'error', 'ok') AS status
              FROM otel_traces WHERE TraceId != '' GROUP BY TraceId
             ORDER BY startedAt DESC LIMIT 100")))
 
@@ -81,8 +81,12 @@
    :timestampUnixNano (value-of row :TimestampUnixNano)
    :spanId (value-of row :SpanId) :parentSpanId (value-of row :ParentSpanId)
    :service (value-of row :ServiceName) :name (value-of row :SpanName)
-   :kind (value-of row :SpanKind) :durationNs (value-of row :Duration)
-   :status (value-of row :StatusCode) :statusMessage (value-of row :StatusMessage)
+   ;; ClickStack stores pdata enum strings in title case (Client, Error, ...).
+   ;; Keep the demo/viewer API's existing lower-case presentation contract.
+   :kind (some-> (value-of row :SpanKind) str/lower-case)
+   :durationNs (value-of row :Duration)
+   :status (some-> (value-of row :StatusCode) str/lower-case)
+   :statusMessage (value-of row :StatusMessage)
    :attributes (value-of row :SpanAttributes)})
 
 (defn- log-json [row]
@@ -166,7 +170,6 @@
         (str/starts-with? path "/api/traces/") "/api/traces/:trace-id"
         (= path "/api/logs") "/api/logs"
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
-        (= path "/assets/datastar.js") "/assets/datastar.js"
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/work") "/work"
         (= path "/upstream") "/upstream"
@@ -239,13 +242,15 @@
         (if (demo-datastar/sse-request? request)
           (demo-datastar/stream-response
            stream-state
-           #(viewer/render-live-content
-             {:enhancement-path "/assets/otel-viewer.js"
+            #(viewer/render-live-content
+             {:eyebrow "OpenTelemetry · embedded chDB"
+              :enhancement-path "/assets/otel-viewer.js"
               :summary (summary-fn)
               :traces (traces-fn)
               :logs (logs-fn)}))
           (html-response
             (viewer/render-page {:title "Jolt Observability"
+                                 :eyebrow "OpenTelemetry · embedded chDB"
                                  :work-path "/work"
                                  :enhancement-path "/assets/otel-viewer.js?v=2"
                                  :live-attributes (demo-datastar/init-attributes)
@@ -256,13 +261,12 @@
         (if-let [trace-id (viewer-trace-id-path uri)]
           (html-response
             (viewer/render-page {:title "Trace detail"
+                                 :eyebrow "OpenTelemetry · embedded chDB"
                                  :work-path "/work"
                                  :trace (trace-fn trace-id)}))
           (error-response 400 "trace id must be 32 lowercase hex characters"))
         (= uri "/assets/otel-viewer.js")
         {:status 200 :headers javascript-headers :body (viewer/enhancement-script)}
-        (= uri "/assets/datastar.js")
-        {:status 200 :headers javascript-headers :body (viewer/datastar-client-script)}
         (= uri "/api/summary") (json-response (summary-fn))
         (= uri "/api/traces") (json-response (traces-fn))
         (= uri "/api/logs") (json-response (logs-fn))
@@ -291,7 +295,6 @@
             viewer-route? (or (= route "/")
                               (= route "/traces/:trace-id")
                               (= route "/assets/otel-viewer.js")
-                              (= route "/assets/datastar.js")
                               (str/starts-with? route "/api/"))
             response (if viewer-route?
                        (dispatch request)
