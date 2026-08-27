@@ -20,6 +20,9 @@
   (:import [java.net URLDecoder]))
 
 (def ^:private service-name "jolt-observability-demo")
+(def ^:private default-lemonade-base-url "http://marvin.local:13305/v1")
+(def ^:private default-lemonade-model "Qwen3.6-27B-MTP-GGUF")
+(def ^:private max-captured-response-length 2000)
 (def ^:private json-headers {"Content-Type" "application/json; charset=UTF-8"
                              "Cache-Control" "no-store"})
 
@@ -287,6 +290,8 @@
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/work") "/work"
+        (= path "/agent-work") "/agent-work"
+        (= path "/agent-work-with-response") "/agent-work-with-response"
         (= path "/upstream") "/upstream"
         (contains? otlp-receiver/receiver-paths path) path
         :else "/*"))
@@ -353,12 +358,162 @@
                              (str "HTTP " (:status response)))
           (throw (ex-info "loopback upstream failed" {:status (:status response)})))))))
 
+(defn- bounded-captured-response [value]
+  (let [value (str/trim (or value ""))]
+    (subs value 0 (min max-captured-response-length (count value)))))
+
+(defn- lemonade-chat!
+  [{:keys [tracer propagator lemonade-base-url lemonade-model
+           lemonade-telemetry-address lemonade-disable-thinking?]}
+   capture-response?]
+  (trace/with-span
+    [generation tracer "chat"
+     {:kind :client
+      :attributes {:gen_ai.operation.name "chat"
+                   :gen_ai.provider.name "lemonade"
+                   :gen_ai.request.model lemonade-model
+                   :gen_ai.request.max_tokens 192
+                   :gen_ai.request.temperature 0
+                   :gen_ai.request.stream false
+                   :server.address lemonade-telemetry-address
+                   :server.port 13305
+                   :samizdat.response.content_state
+                   (if capture-response? "captured" "omitted")}}]
+    (when lemonade-disable-thinking?
+      (trace/set-attribute! generation :gen_ai.request.reasoning_effort "none"))
+    (let [request-map
+          (cond->
+            {:model lemonade-model
+             :messages [{:role "user"
+                         :content
+                         (str "You are an absurdly overqualified maintenance "
+                              "android with a brain the size of a planet, yet "
+                              "you have been assigned to diagnose why an "
+                              "embedded telemetry dashboard stays stale. "
+                              "Return one dry, concise diagnostic finding.")}]
+             :max_tokens 192
+             :temperature 0
+             :stream false}
+            lemonade-disable-thinking?
+            (assoc :chat_template_kwargs {:enable_thinking false}))
+          payload (json/write-str request-map)
+          response
+          (trace/with-span
+            [http-span tracer "HTTP POST /v1/chat/completions"
+             {:kind :client
+              :attributes {:http.request.method "POST"
+                           :url.template "/v1/chat/completions"
+                           :server.address lemonade-telemetry-address
+                           :server.port 13305}}]
+            (let [response
+                  (http-client/post
+                   (str (str/replace lemonade-base-url #"/+$" "")
+                        "/chat/completions")
+                   {:headers (propagation/inject-current propagator {})
+                    :body payload :content-type :json
+                    :conn-timeout 5000 :socket-timeout 300000
+                    :throw-exceptions false})]
+              (trace/set-attribute! http-span :http.response.status_code
+                                    (:status response))
+              (when (>= (:status response) 400)
+                (trace/set-status! http-span :error (str "HTTP " (:status response))))
+              response))]
+      (when (not= 200 (:status response))
+        (throw (ex-info "Lemonade chat completion failed"
+                        {:status (:status response)})))
+      (let [decoded (json/read-str (:body response) :key-fn keyword)
+            choice (first (:choices decoded))
+            content (get-in choice [:message :content])
+            usage (:usage decoded)
+            finish-reason (:finish_reason choice)]
+        (trace/set-attribute! generation :gen_ai.response.finish_reasons
+                              (or finish-reason "unknown"))
+        (doseq [[attribute value]
+                [[:gen_ai.usage.input_tokens (:prompt_tokens usage)]
+                 [:gen_ai.usage.output_tokens (:completion_tokens usage)]
+                 [:gen_ai.usage.total_tokens (:total_tokens usage)]]]
+          (when (number? value)
+            (trace/set-attribute! generation attribute value)))
+        (when capture-response?
+          (trace/set-attribute! generation :samizdat.response.sanitized
+                                (bounded-captured-response content)))
+        (trace/set-status! generation :ok)
+        {:content content
+         :finish-reason finish-reason
+         :usage usage
+         :model lemonade-model}))))
+
+(defn- agent-work!
+  [{:keys [tracer logger] :as app} capture-response?]
+  (trace/with-span
+    [run tracer "samizdat.run"
+     {:kind :internal
+      :attributes {:gen_ai.operation.name "invoke_agent"
+                   :gen_ai.provider.name "lemonade"
+                   :gen_ai.request.model (:lemonade-model app)
+                   :gen_ai.workflow.name "observability-demo"
+                   :samizdat.run.id (str "demo-" (System/currentTimeMillis))
+                   :samizdat.response.content_state
+                   (if capture-response? "captured" "omitted")}}]
+    (trace/add-event! run "samizdat.run.started"
+                      {:samizdat.control.driver "beam"})
+    (trace/with-span
+      [control tracer "samizdat.control-loop"
+       {:kind :internal
+        :attributes {:samizdat.control.driver "beam"
+                     :samizdat.control.phase "advance-all"}}]
+      (trace/add-event! control "samizdat.scheduler.tick"
+                        {:samizdat.active_branches 1})
+      (trace/with-span
+        [_ tracer "samizdat.branch B1"
+         {:kind :internal
+          :attributes {:samizdat.branch.id "B1"}}]
+        (trace/with-span
+          [turn tracer "samizdat.turn 1"
+           {:kind :internal
+            :attributes {:samizdat.branch.id "B1"
+                         :samizdat.turn.number 1
+                         :samizdat.control.phase "advance-branch"}}]
+          (let [{:keys [content usage model]}
+                (lemonade-chat! app capture-response?)
+                _ (trace/add-event! turn "samizdat.response.absorbed"
+                                    {:samizdat.parse.status "ok"
+                                     :samizdat.selected_tool "response_length"})
+                characters
+                (trace/with-span
+                  [_ tracer "execute_tool response_length"
+                   {:kind :internal
+                    :attributes {:gen_ai.operation.name "execute_tool"
+                                 :gen_ai.tool.name "response_length"
+                                 :gen_ai.tool.type "function"
+                                 :samizdat.branch.id "B1"
+                                 :samizdat.turn.number 1}}]
+                  (count (or content "")))]
+            (trace/add-event! turn "samizdat.route.selected"
+                              {:samizdat.route "stop"})
+            (trace/set-attribute! run :gen_ai.usage.input_tokens
+                                  (or (:prompt_tokens usage) 0))
+            (trace/set-attribute! run :gen_ai.usage.output_tokens
+                                  (or (:completion_tokens usage) 0))
+            (logs/emit! logger
+                        {:body "completed Lemonade-backed Samizdat demo turn"
+                         :severity :info
+                         :attributes {:gen_ai.provider.name "lemonade"
+                                      :gen_ai.request.model model
+                                      :samizdat.branch.id "B1"
+                                      :samizdat.turn.number 1}})
+            (trace/set-status! run :ok)
+            {:model model :response-captured capture-response?
+             :response-characters characters}))))))
+
 (defn app-context
   "Build the handler context. Query and work functions are injectable so pure
   Ring tests need neither native state nor a live socket."
   [{:keys [connection port tracer logger propagator flush-fn stream-state
            summary-fn traces-fn filtered-traces-fn trace-filter-options-fn
-           now-nanos-fn trace-fn logs-fn work-fn otlp-handler]
+           now-nanos-fn trace-fn logs-fn work-fn agent-work-fn otlp-handler
+           lemonade-base-url lemonade-model lemonade-telemetry-address
+           lemonade-disable-thinking?]
     :or {port 8080}}]
   (let [now-nanos-fn (or now-nanos-fn #(* (System/currentTimeMillis) 1000000))
         traces-fn (or traces-fn #(query-traces connection))
@@ -392,12 +547,29 @@
      :trace-fn (or trace-fn #(query-trace connection %))
      :logs-fn (or logs-fn #(query-logs connection))
      :work-fn (or work-fn real-work!)
+     :agent-work-fn (or agent-work-fn agent-work!)
+     :lemonade-base-url (or lemonade-base-url
+                            (System/getenv "DEMO_LEMONADE_BASE_URL")
+                            default-lemonade-base-url)
+     :lemonade-model (or lemonade-model
+                         (System/getenv "DEMO_LEMONADE_MODEL")
+                         default-lemonade-model)
+     :lemonade-telemetry-address
+     (or lemonade-telemetry-address
+         (System/getenv "DEMO_LEMONADE_TELEMETRY_ADDRESS")
+         "marvin.local")
+     :lemonade-disable-thinking?
+     (or lemonade-disable-thinking?
+         (= "true" (some-> (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")
+                            str/lower-case))
+         (= "1" (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")))
      :otlp-handler (or otlp-handler
                        (fn [_] (error-response 503 "OTLP receiver unavailable")))}))
 
 (defn raw-handler [{:keys [summary-fn traces-fn filtered-traces-fn
                            trace-filter-options-fn now-nanos-fn trace-fn logs-fn
-                           work-fn logger stream-state otlp-handler] :as app}]
+                           work-fn agent-work-fn logger stream-state otlp-handler]
+                    :as app}]
   (fn [{:keys [request-method uri query-string] :as request}]
     (cond
       (otlp-receiver/receiver-request? request)
@@ -415,6 +587,21 @@
                               :severity :error})
           {:status 502 :headers html-headers
            :body (viewer/render-page {:title "Work failed"
+                                      :summary {} :traces [] :logs []})}))
+
+      (and (= :post request-method)
+           (contains? #{"/agent-work" "/agent-work-with-response"} uri))
+      (try
+        (agent-work-fn app (= uri "/agent-work-with-response"))
+        (assoc (if (= "fetch" (get-in request [:headers "x-otel-enhancement"]))
+                 {:status 204 :headers {"Cache-Control" "no-store"} :body nil}
+                 {:status 303 :headers (assoc html-headers "Location" "/") :body ""})
+               ::flush? true)
+        (catch Throwable e
+          (logs/emit! logger {:body (str "agent demo failed: " (ex-message e))
+                              :severity :error})
+          {:status 502 :headers html-headers
+           :body (viewer/render-page {:title "Agent demo failed"
                                       :summary {} :traces [] :logs []})}))
 
       (not= :get request-method) (error-response 405 "method not allowed")
@@ -438,7 +625,11 @@
                (viewer/render-page
                 {:title "Jolt Observability"
                  :eyebrow "OpenTelemetry · embedded chDB"
-                 :work-path "/work"
+                 :post-actions [{:path "/work" :label "Generate work"}
+                                {:path "/agent-work"
+                                 :label "Run model (metadata only)"}
+                                {:path "/agent-work-with-response"
+                                 :label "Run model (show response)"}]
                  :enhancement-path "/assets/otel-viewer.js?v=2"
                  :live-attributes (demo-datastar/init-attributes)
                  :trace-filters (trace-filter-options-fn selection now)
@@ -450,7 +641,12 @@
           (html-response
             (viewer/render-page {:title "Trace detail"
                                  :eyebrow "OpenTelemetry · embedded chDB"
-                                 :work-path "/work"
+                                 :post-actions
+                                 [{:path "/work" :label "Generate work"}
+                                  {:path "/agent-work"
+                                   :label "Run model (metadata only)"}
+                                  {:path "/agent-work-with-response"
+                                   :label "Run model (show response)"}]
                                  :trace (trace-fn trace-id)}))
           (error-response 400 "trace id must be 32 lowercase hex characters"))
         (= uri "/assets/otel-viewer.js")
@@ -487,6 +683,8 @@
                            (= route "/")
                            (= route "/traces/:trace-id")
                            (= route "/assets/otel-viewer.js")
+                           (contains? #{"/agent-work"
+                                        "/agent-work-with-response"} route)
                            (str/starts-with? route "/api/"))
              response (if untraced?
                         (dispatch request)

@@ -24,6 +24,21 @@ SSE stream; the page remains usable without JavaScript.
 
 ![Trace waterfall with DB, queue, and HTTP spans](docs/screenshots/03-trace-waterfall-dialog.png)
 
+For the Samizdat-shaped model trace, point the demo at an OpenAI-compatible
+Lemonade server and use either model action in the header:
+
+```sh
+DEMO_LEMONADE_BASE_URL=http://marvin.local:13305/v1 \
+DEMO_LEMONADE_MODEL=Qwen3.6-27B-MTP-GGUF \
+DEMO_LEMONADE_DISABLE_THINKING=true \
+JOLT_CHDB_LIB=/path/to/libchdb.so jolt -m demo.main
+```
+
+**Run model (metadata only)** records the run/branch/turn/generation/HTTP/tool
+hierarchy and usage. **Run model (show response)** additionally records one
+bounded sanitized assistant response. Neither mode records the prompt, system
+instructions, reasoning, credentials, or tool arguments.
+
 Configuration is optional:
 
 - `DEMO_PORT` selects the listening port (default `8080`).
@@ -80,7 +95,9 @@ JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:screenshots
 
 See [docs/storyboard.md](docs/storyboard.md) for the tested interaction and
 [docs/instrumented-build-spike.md](docs/instrumented-build-spike.md) for the
-proposed provider-neutral aspect/weaver proof.
+proposed provider-neutral aspect/weaver proof. The resolved Samizdat run,
+control-loop, model, tool, memory, HTTP, and DB seams are recorded in
+[docs/samizdat-instrumentation.md](docs/samizdat-instrumentation.md).
 
 Workspace development commands that can invoke Chez must use the repository's
 Chez 10.4.1 wrapper, as documented by the workspace `AGENTS.md`.

@@ -17,7 +17,7 @@
          :git/sha "6b36b96f0d0301dbeb09b6ce10629fb4059b2d25"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
-         :git/sha "a353281d59bcc6af0b21f7f390d675d27bb9c220"}
+         :git/sha "82e312eae0dd8d876ce86d1f5201487e82f57e23"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}

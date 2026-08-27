@@ -46,7 +46,9 @@
                          :spanTree (demo/span-tree sample-spans)
                          :logs sample-logs})
      :logs-fn (constantly sample-logs)
-     :work-fn (fn [_] {:upstream {:ok true}})}))
+     :work-fn (fn [_] {:upstream {:ok true}})
+     :agent-work-fn (fn [_ capture-response?]
+                      {:response-captured capture-response?})}))
 
 (defn decode [response]
   (json/read-str (:body response) :key-fn keyword))
@@ -70,6 +72,24 @@
             [otlp-receiver/logs-path true]
             [otlp-receiver/metrics-path true]]
            @seen))))
+
+(deftest agent-demo-routes-select-content-capture-without-http-wrapper-spans
+  (let [calls (atom [])
+        flushes (atom 0)
+        app (assoc (test-app)
+                   :agent-work-fn (fn [_ capture-response?]
+                                    (swap! calls conj capture-response?))
+                   :flush-fn #(swap! flushes inc))
+        h (demo/handler app)]
+    (is (= "/agent-work" (demo/route-for "/agent-work")))
+    (is (= "/agent-work-with-response"
+           (demo/route-for "/agent-work-with-response")))
+    (is (= 303 (:status (h {:request-method :post :uri "/agent-work"}))))
+    (is (= 204 (:status
+                (h {:request-method :post :uri "/agent-work-with-response"
+                    :headers {"x-otel-enhancement" "fetch"}}))))
+    (is (= [false true] @calls))
+    (is (= 2 @flushes))))
 
 (deftest trace-workbench-query-selection-is-bounded-and-applied
   (is (= {"service" "api service" "operation" "GET /users"}
@@ -727,6 +747,76 @@
             (is (str/includes? update-event "class=\"otel-trace-list\""))
             (is (= (inc before-post) after-post)
                 "POST returns only after its request span is durably flushed"))))
+      (finally (demo/stop! lifecycle)))))
+
+(deftest agent-model-traces-cover-control-loop-and-explicit-content-policy
+  (let [port (next-live-test-port)
+        lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
+        app (assoc (:app lifecycle)
+                   :lemonade-base-url "http://model.test/v1"
+                   :lemonade-model "test-model"
+                   :lemonade-telemetry-address "local-model-host"
+                   :lemonade-disable-thinking? true)
+        response-body
+        (json/write-str
+         {:choices [{:message {:role "assistant"
+                               :content "bounded sanitized answer"}
+                     :finish_reason "stop"}]
+          :usage {:prompt_tokens 17 :completion_tokens 5 :total_tokens 22}})
+        requests (atom [])]
+    (try
+      (with-redefs
+        [http-client/post
+         (fn [url request]
+           (swap! requests conj [url (json/read-str (:body request)
+                                                  :key-fn keyword)])
+           {:status 200 :headers {} :body response-body})]
+        (let [h (demo/handler app)]
+          (is (= 303 (:status
+                      (h {:request-method :post :uri "/agent-work"}))))
+          (is (= 303 (:status
+                      (h {:request-method :post
+                          :uri "/agent-work-with-response"}))))))
+      (is (= 2 (count @requests)))
+      (is (every? #(= "http://model.test/v1/chat/completions" (first %))
+                  @requests))
+      (is (every? #(= false
+                         (get-in % [1 :chat_template_kwargs :enable_thinking]))
+                  @requests))
+      (is (true? (sdk/force-flush! (:otel lifecycle))))
+      (let [traces (demo/query-traces (:connection lifecycle))
+            details (mapv #(demo/query-trace (:connection lifecycle) (:traceId %))
+                          traces)
+            captured (some (fn [detail]
+                             (when (some #(= "bounded sanitized answer"
+                                             (get-in % [:attributes
+                                                        "samizdat.response.sanitized"]))
+                                         (:spans detail))
+                               detail))
+                           details)
+            omitted (some #(when (not= (:traceId %) (:traceId captured)) %) details)]
+        (is (= 2 (count traces)) "agent routes do not create wrapper HTTP traces")
+        (is (every? #(= "samizdat.run" (:rootSpan %)) traces))
+        (is (every? #(= 7 (:spanCount %)) traces))
+        (is (some? captured))
+        (is (some? omitted))
+        (is (not-any? #(contains? (:attributes %)
+                                  "samizdat.response.sanitized")
+                      (:spans omitted)))
+        (is (every? #(not (str/includes? (pr-str (:attributes %))
+                                          "brain the size of a planet"))
+                    (mapcat :spans details))
+            "the prompt never enters span attributes")
+        (let [html-captured
+              (viewer/render-fragment {:trace captured})
+              html-omitted
+              (viewer/render-fragment {:trace omitted})]
+          (is (str/includes? html-captured "samizdat.control-loop"))
+          (is (str/includes? html-captured ">Control</span>"))
+          (is (str/includes? html-captured "bounded sanitized answer"))
+          (is (str/includes? html-omitted
+                             "Content not recorded (privacy default)"))
+          (is (not (str/includes? html-omitted "bounded sanitized answer")))))
       (finally (demo/stop! lifecycle)))))
 
 (deftest live-otlp-parent-child-ingestion-without-feedback

@@ -40,6 +40,12 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   parent-linked server, DB, messaging, client, and loopback-server spans with
   correlated INFO logs; errors are recorded and return 502.
 - `GET /upstream` returns a fixed JSON payload and records one server span/log.
+- `POST /agent-work` and `POST /agent-work-with-response` run one
+  Lemonade-backed, Samizdat-shaped control-loop turn. Both record a root run,
+  control loop, branch, turn, logical generation, physical HTTP attempt, and
+  tool span. The first is metadata-only; the second additionally records one
+  bounded sanitized response. Neither records prompts, system instructions,
+  reasoning, credentials, or tool arguments.
 - `POST /v1/traces` accepts OTLP/HTTP JSON traces through the host-agnostic
   `otel.otlp.http-receiver`. The demo parser measures actual UTF-8 encoded bytes,
   limits bodies to 1 MiB, rejects compression, and admits one parse/export at a
@@ -117,6 +123,10 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   console/page errors, verifies the dialog without navigation, and separately
   runs the zero-JavaScript POST/303/detail/back path. The documentation capture
   reuses the same semantic story.
+- An optional live-model Playwright project calls both agent routes, verifies
+  the control-loop hierarchy and privacy state, captures the paired docs
+  screenshots, and rejects the private `marvin` hostname anywhere in rendered
+  HTML. Its telemetry address is an explicit neutral override.
 
 ## Adoption boundaries
 
