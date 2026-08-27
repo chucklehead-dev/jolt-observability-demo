@@ -1,0 +1,13 @@
+{:paths ["src"]
+
+ :deps {jolt-lang/jolt-http {:local/root "/home/chuck/ai-src/jolt-http"}
+        jolt-lang/http-client {:local/root "/home/chuck/ai-src/http-client"}
+        io.github.jolt-lang/otel {:local/root "/home/chuck/ai-src/jolt-otel"}
+        io.github.jolt-lang/chdb {:local/root "/home/chuck/ai-src/jolt-chdb"}
+        io.github.jolt-lang/otel-clickhouse {:local/root "/home/chuck/ai-src/jolt-otel-clickhouse"}
+        org.clojure/data.json {:local/root "/home/chuck/ai-src/data.json"}}
+
+ :aliases {:test {:extra-paths ["test"]
+                  :main-opts ["-m" "demo.test-runner"]}}
+
+ :tasks {test "jolt -M:test"}}

@@ -8,6 +8,8 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 
 - Open one application-owned `jdbc.core` connection to `chdb::memory:` by
   default; allow `DEMO_CHDB_SPEC` to select a persistent `chdb:` path.
+  Persistent demo data is operator-owned: choose a disposable path or establish
+  retention and deletion policy before reuse. The demo never deletes it.
 - Build `otel.exporter.chdb/exporter` with `{:connection conn}` and initialize
   `otel.sdk` with service `jolt-observability-demo`, logs enabled, and batching.
 - Start `jolt.http.server/run-server`; `DEMO_PORT` defaults to 8080.
@@ -58,3 +60,12 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - All commands use `/home/chuck/ai-src/tools/jolt-with-chez-10.4.1` and writable
   cache directories. The demo does not commit, publish, push, or modify its
   local dependencies.
+
+## Adoption boundaries
+
+This demo exercises the embedded exporter and query seam only. Exact ClickStack
+collector schema compatibility, supported Langfuse ingestion, and Samizdat's
+derived-observability lifecycle remain separate gates documented in
+`../jolt-otel-clickhouse/docs/clickstack-compatibility.md`,
+`../jolt-otel-clickhouse/docs/langfuse-bridge.md`, and
+`../jolt-otel-clickhouse/docs/samizdat-adoption.md`.
