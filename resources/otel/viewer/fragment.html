@@ -6,7 +6,7 @@
     </div>
     <nav aria-label="Viewer actions">
       <a class="otel-back-link" href="{{homePath}}">{% if traceView %}← All traces{% else %}Refresh{% endif %}</a>
-      {% if workPath %}<form action="{{workPath}}" method="post"><button type="submit">Generate work</button></form>{% endif %}
+      {% if workPath %}<form action="{{workPath}}" method="post"{% if enhanced %} data-otel-work{% endif %}><button type="submit">Generate work</button></form>{% endif %}
     </nav>
   </header>
 

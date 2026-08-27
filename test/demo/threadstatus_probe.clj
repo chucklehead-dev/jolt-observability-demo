@@ -10,6 +10,13 @@
                                :throw-exceptions false}
                               options)))
 
+(defn- enhanced-work! [base]
+  (http-client/post (str base "/work")
+                    {:headers {"X-Otel-Enhancement" "fetch"}
+                     :conn-timeout 2000
+                     :socket-timeout 5000
+                     :throw-exceptions false}))
+
 (defn- sse! [base]
   (try
     (get! (str base "/?datastar-sse=true") {:socket-timeout 1200})
@@ -28,14 +35,14 @@
     "sse-work" (dotimes [_ 6]
                  (let [reader (future (sse! base))]
                    (Thread/sleep 150)
-                   (get! (str base "/work") {})
+                   (enhanced-work! base)
                    @reader))
     "mixed-stress"
     (dotimes [_ 4]
       (let [readers (doall (repeatedly 4 #(future (sse! base))))]
         (Thread/sleep 150)
         (dotimes [_ 10]
-          (get! (str base "/work") {})
+          (enhanced-work! base)
           (get! (str base "/") {})
           (get! (str base "/api/traces") {}))
         (doseq [reader readers] @reader)))

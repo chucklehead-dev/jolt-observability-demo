@@ -60,6 +60,9 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   the HTTP server's shutdown deadline prevents disconnected unchanged streams
   from stranding shutdown workers. At most eight streams may be
   active, leaving normal jolt-http worker capacity reserved.
+- With JavaScript available, Generate work posts in place and lets the existing
+  SSE stream render the result. The static form retains POST/redirect behavior
+  without JavaScript; enhanced use avoids closing and reopening the live stream.
 - Viewer HTML, assets, JSON APIs, trace detail, and SSE snapshot rendering are
   excluded from instrumentation so observing telemetry cannot recursively
   generate more viewer telemetry.

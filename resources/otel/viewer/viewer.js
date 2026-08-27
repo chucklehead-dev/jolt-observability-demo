@@ -1,4 +1,25 @@
 (() => {
+  document.addEventListener("submit", async (event) => {
+    const form = event.target.closest?.("form[data-otel-work]");
+    if (!form) return;
+
+    event.preventDefault();
+    const button = form.querySelector("button[type=submit]");
+    if (button) button.disabled = true;
+    try {
+      const response = await fetch(form.action, {
+        method: form.method,
+        headers: {"X-Otel-Enhancement": "fetch"},
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (_) {
+      form.removeAttribute("data-otel-work");
+      form.requestSubmit();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+
   const dialog = document.querySelector("[data-otel-dialog]");
   const content = dialog?.querySelector("[data-otel-dialog-content]");
 

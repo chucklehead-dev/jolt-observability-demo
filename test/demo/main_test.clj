@@ -65,7 +65,9 @@
     (testing "HTML trace viewer and form action"
       (let [page (h {:request-method :get
                      :uri "/traces/0123456789abcdef0123456789abcdef"})
-            generated (h {:request-method :post :uri "/work"})]
+            generated (h {:request-method :post :uri "/work"})
+            enhanced (h {:request-method :post :uri "/work"
+                         :headers {"x-otel-enhancement" "fetch"}})]
         (is (= 200 (:status page)))
         (is (= "text/html; charset=UTF-8" (get-in page [:headers "Content-Type"])))
         (is (str/includes? (:body page) "<details open>"))
@@ -77,7 +79,8 @@
                            ".otel-span-meta dt,.otel-span-meta dd{min-width:0;overflow-wrap:anywhere}"))
         (is (= 303 (:status generated)))
         (is (= "/" (get-in generated [:headers "Location"])))
-        (is (= 1 @flushes))))
+        (is (= 204 (:status enhanced)))
+        (is (= 2 @flushes))))
     (testing "validated trace identifiers"
       (let [response (h {:request-method :get
                          :uri "/api/traces/0123456789abcdef0123456789abcdef"})
@@ -123,7 +126,9 @@
                        ".otel-page body{min-height:100vh;margin:0;background:#080d18;color:#f2f6ff}"))
     (is (str/includes? body "--otel-muted:#b6c2d9"))
     (is (str/includes? body ".otel-viewer{"))
-    (is (str/includes? body "<form action=\"/work\" method=\"post\">"))
+    (is (str/includes? body
+                       "<form action=\"/work\" method=\"post\" data-otel-work>"))
+    (is (str/includes? (viewer/enhancement-script) "X-Otel-Enhancement"))
     (is (str/includes? body
                        "href=\"/traces/0123456789abcdef0123456789abcdef\" data-otel-trace"))
     (is (str/includes? body "<dialog class=\"otel-trace-dialog\""))

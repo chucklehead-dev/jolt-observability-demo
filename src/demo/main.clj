@@ -220,7 +220,9 @@
       (and (= :post request-method) (= uri "/work"))
       (try
         (work-fn app)
-        (assoc {:status 303 :headers (assoc html-headers "Location" "/") :body ""}
+        (assoc (if (= "fetch" (get-in request [:headers "x-otel-enhancement"]))
+                 {:status 204 :headers {"Cache-Control" "no-store"} :body nil}
+                 {:status 303 :headers (assoc html-headers "Location" "/") :body ""})
                ::flush? true)
         (catch Throwable e
           (logs/emit! logger {:body (str "work failed: " (ex-message e))
