@@ -28,7 +28,7 @@
 
 (def ^:private javascript-headers
   {"Content-Type" "text/javascript; charset=UTF-8"
-   "Cache-Control" "public, max-age=3600"
+   "Cache-Control" "no-cache"
    "X-Content-Type-Options" "nosniff"})
 
 (defn- json-response
@@ -247,7 +247,7 @@
           (html-response
             (viewer/render-page {:title "Jolt Observability"
                                  :work-path "/work"
-                                 :enhancement-path "/assets/otel-viewer.js"
+                                 :enhancement-path "/assets/otel-viewer.js?v=2"
                                  :live-attributes (demo-datastar/init-attributes)
                                  :summary (summary-fn)
                                  :traces (traces-fn)
