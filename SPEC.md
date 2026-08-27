@@ -35,8 +35,10 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   service, body, traceId, and spanId.
 - `GET /work` performs one fixed outbound request to this same server's
   `/upstream`, using `jolt.http-client` with explicit connect/read timeouts. It
-  creates a server span, a nested client span, and correlated INFO logs; errors
-  are recorded and return 502.
+  also performs a real embedded chDB readiness query and propagates W3C context
+  through a producer/consumer queue envelope. Together these create six
+  parent-linked server, DB, messaging, client, and loopback-server spans with
+  correlated INFO logs; errors are recorded and return 502.
 - `GET /upstream` returns a fixed JSON payload and records one server span/log.
 - `POST /v1/traces` accepts OTLP/HTTP JSON traces through the host-agnostic
   `otel.otlp.http-receiver`. The demo parser measures actual UTF-8 encoded bytes,
@@ -88,7 +90,8 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   behavior, hostile-value escaping, semantic markup, the zero-JavaScript
   fallback, and the reusable fragment renderer.
 - Datastar stream tests cover the fixed selector, bounded admission, changing
-  snapshots, disconnect cleanup, and rejection of malformed SSE flags.
+  snapshots, explicit non-closing sink flushes, disconnect cleanup, and
+  rejection of malformed SSE flags.
 - An integration test starts the server on a non-default port, calls `/work`
   with `jolt.http-client`, flushes telemetry, and proves the complete external
   parent/server/client/upstream parent chain, correlated logs, and HTML detail.
@@ -109,6 +112,11 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - Publication and CI commands use Jolt v0.7.27 and writable cache directories.
   Workspace verification sets `JOLT_WRAPPER` to the required Chez 10.4.1
   wrapper. Verification does not modify dependency sources.
+- Playwright drives Chromium over the real HTTP server, proves the initial SSE
+  response and post-work patch arrive before stream close, rejects browser
+  console/page errors, verifies the dialog without navigation, and separately
+  runs the zero-JavaScript POST/303/detail/back path. The documentation capture
+  reuses the same semantic story.
 
 ## Adoption boundaries
 

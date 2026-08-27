@@ -17,9 +17,12 @@ jolt -m demo.main
 ```
 
 Open <http://127.0.0.1:8080/> and select **Generate work**. The resulting trace
-contains parent-linked Ring server, HTTP client, and loopback server spans with
-correlated logs. Traces and logs appear in the open page through a bounded SSE
-stream; the page remains usable without JavaScript.
+contains six parent-linked spans across an embedded DB query, a propagated
+producer/consumer queue handoff, and a real loopback HTTP client/server boundary,
+with correlated logs. Traces and logs appear in the open page through a bounded
+SSE stream; the page remains usable without JavaScript.
+
+![Trace waterfall with DB, queue, and HTTP spans](docs/screenshots/03-trace-waterfall-dialog.png)
 
 Configuration is optional:
 
@@ -54,6 +57,30 @@ jolt -M:setup-native
 jolt -A:test -m hegel.install
 jolt -M:test
 ```
+
+The browser story requires Node 18+ and the pinned Chromium bundle:
+
+```sh
+npm install
+npx playwright install chromium
+JOLT_CHDB_LIB=/path/to/libchdb.so npm run test:browser
+```
+
+Use a fresh filesystem-backed chDB for the same live-update story with:
+
+```sh
+JOLT_CHDB_LIB=/path/to/libchdb.so npm run test:browser:persistent
+```
+
+The same deterministic story owns the checked-in documentation frames:
+
+```sh
+JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:screenshots
+```
+
+See [docs/storyboard.md](docs/storyboard.md) for the tested interaction and
+[docs/instrumented-build-spike.md](docs/instrumented-build-spike.md) for the
+proposed provider-neutral aspect/weaver proof.
 
 Workspace development commands that can invoke Chez must use the repository's
 Chez 10.4.1 wrapper, as documented by the workspace `AGENTS.md`.
