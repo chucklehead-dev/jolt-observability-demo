@@ -26,6 +26,7 @@
   (case scenario
     "startup" nil
     "work" (dotimes [_ 12] (get! (str base "/work") {}))
+    "post-flush" (dotimes [_ 20] (enhanced-work! base))
     "viewer" (dotimes [_ 12]
                (get! (str base "/") {})
                (get! (str base "/api/summary") {})

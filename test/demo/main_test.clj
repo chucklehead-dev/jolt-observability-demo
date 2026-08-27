@@ -264,12 +264,41 @@
             (is (str/includes? (:body page) "HTTP GET /upstream"))
             (is (not (str/includes? (:body page) "<script"))))
           (let [before-post (:traceCount (decode (http-client/get (str base "/api/summary"))))
-                generated (http-client/post (str base "/work")
-                                            {:follow-redirects false
-                                             :throw-exceptions false})
+                live-response ((demo/handler (:app lifecycle))
+                               {:request-method :get :uri "/"
+                                :query-string "datastar-sse=true" :headers {}})
+                initial (promise)
+                changed (promise)
+                first-event (atom nil)
+                live-writer
+                (future
+                  (try
+                    (http-body/write-body-to-sink
+                     (:body live-response) live-response
+                     (reify http-body/Sink
+                       (sink-write! [_ bytes offset length]
+                         (let [event (String. bytes offset length "UTF-8")]
+                           (if-let [first @first-event]
+                             (when (not= first event)
+                               (deliver changed event)
+                               (throw (ex-info "live update observed" {})))
+                             (do (reset! first-event event)
+                                 (deliver initial event)))))
+                       (sink-close! [_] nil)))
+                    (catch Throwable _)))
+                _ (is (not= :timeout (deref initial 5000 :timeout))
+                      "the live stream emits its initial durable snapshot")
+                generated (http-client/post
+                           (str base "/work")
+                           {:headers {"X-Otel-Enhancement" "fetch"}
+                            :throw-exceptions false})
+                update-event (deref changed 5000 :timeout)
+                _ @live-writer
                 after-post (:traceCount (decode (http-client/get (str base "/api/summary"))))]
-            (is (= 303 (:status generated)))
-            (is (= "/" (get-in generated [:headers "location"])))
+            (is (= 204 (:status generated)))
+            (is (not= :timeout update-event)
+                "an open SSE stream receives the generated trace without refresh")
+            (is (str/includes? update-event "class=\"otel-trace-list\""))
             (is (= (inc before-post) after-post)
                 "POST returns only after its request span is durably flushed"))))
       (finally (demo/stop! lifecycle)))))

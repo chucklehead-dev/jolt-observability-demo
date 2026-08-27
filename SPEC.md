@@ -77,10 +77,14 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - An integration test starts the server on a non-default port, calls `/work`
   with `jolt.http-client`, flushes telemetry, and proves the complete external
   parent/server/client/upstream parent chain, correlated logs, and HTML detail.
-- `scripts/probe-threadstatus.sh` runs startup, ordinary work, viewer polling,
+- `scripts/probe-threadstatus.sh` runs startup, ordinary work, synchronous
+  enhanced POST/flush, viewer polling,
   SSE disconnect, concurrent SSE/work, and a mixed stress scenario in separate
   fresh Jolt processes. It preserves per-scenario stdout/stderr evidence and
   fails if the native ClickHouse `ThreadStatus` diagnostic appears.
+  Each child runs under a pseudo-terminal because libclickhouse suppresses this
+  diagnostic when stderr is redirected; the gate strips terminal color before
+  matching the transcript.
   `THREADSTATUS_PROBE_SCENARIOS` selects cases and
   `THREADSTATUS_PROBE_REPEAT` repeats each in a fresh process for soak runs.
 - All commands use `/home/chuck/ai-src/tools/jolt-with-chez-10.4.1` and writable
