@@ -1,5 +1,5 @@
 (ns otel.viewer
-  "Zero-JavaScript OpenTelemetry HTML renderer.
+  "OpenTelemetry HTML renderer with a zero-JavaScript baseline.
 
   Hosts supply already-bounded data and may render either a complete document
   or an embeddable fragment. The renderer owns no database, server, SDK, or
@@ -21,11 +21,19 @@
   (delay (slurp (io/resource "otel/viewer/page.html"))))
 (def ^:private stylesheet
   (delay (slurp (io/resource "otel/viewer/viewer.css"))))
+(def ^:private enhancement
+  (delay (slurp (io/resource "otel/viewer/viewer.js"))))
 
 (defn styles
   "Scoped viewer CSS for a host that embeds `render-fragment`."
   []
   @stylesheet)
+
+(defn enhancement-script
+  "Optional progressive enhancement for opening trace links in a native dialog.
+  Hosts may serve this as a static JavaScript response; fragments work without it."
+  []
+  @enhancement)
 
 (defn- text [value]
   (if (nil? value) "" (str value)))
@@ -109,11 +117,15 @@
    :severity (text (:severity log))
    :body (text (:body log))})
 
-(defn- index-model [{:keys [title base-path work-path summary traces logs]}]
+(defn- index-model [{:keys [title base-path work-path enhancement-path
+                            summary traces logs]}]
   (let [base (normalize-base-path base-path)]
     {:title (text (or title "Jolt Observability"))
      :homePath (if (str/blank? base) "/" base)
      :workPath (when work-path (mounted-path base work-path))
+     :enhanced (boolean enhancement-path)
+     :enhancementPath (when enhancement-path
+                        (mounted-path base enhancement-path))
      :stats [{:label "Traces" :value (or (:traceCount summary) 0)}
              {:label "Spans" :value (or (:spanCount summary) 0)}
              {:label "Logs" :value (or (:logCount summary) 0)}
@@ -162,9 +174,12 @@
   `render-fragment`."
   [model]
   (let [title (text (or (:title model) "Jolt Observability"))
-        fragment (render-fragment model)]
+        fragment (render-fragment model)
+        base (normalize-base-path (:base-path model))]
     (selmer-util/with-escaping
       (selmer/render @page-template
                      {:title title
                       :styles [:safe @stylesheet]
-                      :content [:safe fragment]}))))
+                      :content [:safe fragment]
+                      :enhancementPath (when-let [path (:enhancement-path model)]
+                                         (mounted-path base path))}))))

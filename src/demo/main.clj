@@ -22,7 +22,12 @@
   {"Content-Type" "text/html; charset=UTF-8"
    "Cache-Control" "no-store"
    "Content-Security-Policy"
-   "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'"
+   "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'"
+   "X-Content-Type-Options" "nosniff"})
+
+(def ^:private javascript-headers
+  {"Content-Type" "text/javascript; charset=UTF-8"
+   "Cache-Control" "public, max-age=3600"
    "X-Content-Type-Options" "nosniff"})
 
 (defn- json-response
@@ -159,6 +164,7 @@
         (= path "/api/traces") "/api/traces"
         (str/starts-with? path "/api/traces/") "/api/traces/:trace-id"
         (= path "/api/logs") "/api/logs"
+        (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/work") "/work"
         (= path "/upstream") "/upstream"
@@ -228,6 +234,7 @@
         (html-response
           (viewer/render-page {:title "Jolt Observability"
                                :work-path "/work"
+                               :enhancement-path "/assets/otel-viewer.js"
                                :summary (summary-fn)
                                :traces (traces-fn)
                                :logs (logs-fn)}))
@@ -238,6 +245,8 @@
                                  :work-path "/work"
                                  :trace (trace-fn trace-id)}))
           (error-response 400 "trace id must be 32 lowercase hex characters"))
+        (= uri "/assets/otel-viewer.js")
+        {:status 200 :headers javascript-headers :body (viewer/enhancement-script)}
         (= uri "/api/summary") (json-response (summary-fn))
         (= uri "/api/traces") (json-response (traces-fn))
         (= uri "/api/logs") (json-response (logs-fn))
@@ -265,6 +274,7 @@
             method (str/upper-case (name (or request-method :unknown)))
             viewer-route? (or (= route "/")
                               (= route "/traces/:trace-id")
+                              (= route "/assets/otel-viewer.js")
                               (str/starts-with? route "/api/"))
             response (if viewer-route?
                        (dispatch request)

@@ -58,8 +58,8 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 ## Verification
 
 - Pure handler tests cover HTML and JSON representations, 200/303/400/404/405
-  behavior, hostile-value escaping, semantic zero-JavaScript markup, and the
-  reusable fragment renderer.
+  behavior, hostile-value escaping, semantic markup, the zero-JavaScript
+  fallback, and the reusable fragment renderer.
 - An integration test starts the server on a non-default port, calls `/work`
   with `jolt.http-client`, flushes telemetry, and proves the complete external
   parent/server/client/upstream parent chain, correlated logs, and HTML detail.
@@ -69,8 +69,12 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 
 ## Adoption boundaries
 
-`otel.viewer/render-fragment`, `otel.viewer/render-page`, and
-`otel.viewer/styles` are pure rendering seams over bounded host-supplied data.
+`otel.viewer/render-fragment`, `otel.viewer/render-page`,
+`otel.viewer/styles`, and `otel.viewer/enhancement-script` are pure rendering
+seams over bounded host-supplied data. The optional enhancement opens trace
+links in a native dialog with native focus management and Escape-to-close.
+Ordinary trace links and the explicit `All traces` link remain the fallback
+when scripts or native dialog support are unavailable.
 A host such as Samizdat owns routing, authentication/CSRF, database queries, and
 work actions; it can mount the fragment under its own shell without adopting
 the demo lifecycle.

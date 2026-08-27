@@ -5,13 +5,12 @@
       <h1>{{title}}</h1>
     </div>
     <nav aria-label="Viewer actions">
-      <a href="{{homePath}}">Refresh</a>
+      <a class="otel-back-link" href="{{homePath}}">{% if traceView %}← All traces{% else %}Refresh{% endif %}</a>
       {% if workPath %}<form action="{{workPath}}" method="post"><button type="submit">Generate work</button></form>{% endif %}
     </nav>
   </header>
 
   {% if traceView %}
-  <p><a href="{{homePath}}">← All traces</a></p>
   <section aria-labelledby="trace-heading">
     <header class="otel-section-heading">
       <div><h2 id="trace-heading">{{trace.rootName}}</h2><code>{{trace.id}}</code></div>
@@ -57,7 +56,7 @@
     {% if traces %}
     <ol class="otel-trace-list">
       {% for trace in traces %}
-      <li><a href="{{trace.href}}"><span><strong>{{trace.rootName}}</strong><small>{{trace.service}} · {{trace.startedAt}}</small></span><span>{{trace.spanCount}} spans</span><span class="otel-status otel-status-{{trace.statusClass}}">{{trace.status}}</span></a></li>
+      <li><a href="{{trace.href}}"{% if enhanced %} data-otel-trace{% endif %}><span><strong>{{trace.rootName}}</strong><small>{{trace.service}} · {{trace.startedAt}}</small></span><span>{{trace.spanCount}} spans</span><span class="otel-status otel-status-{{trace.statusClass}}">{{trace.status}}</span></a></li>
       {% endfor %}
     </ol>
     {% else %}<p class="otel-empty">No traces yet. Generate work to begin.</p>{% endif %}
@@ -70,5 +69,11 @@
     </ol>
     {% else %}<p class="otel-empty">No logs yet.</p>{% endif %}
   </section>
+  {% if enhanced %}
+  <dialog class="otel-trace-dialog" data-otel-dialog aria-label="Trace detail">
+    <form method="dialog"><button class="otel-dialog-close" type="submit">Close <kbd>Esc</kbd></button></form>
+    <div data-otel-dialog-content></div>
+  </dialog>
+  {% endif %}
   {% endif %}
 </main>

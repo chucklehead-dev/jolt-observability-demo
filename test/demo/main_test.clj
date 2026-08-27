@@ -50,6 +50,11 @@
       (is (= sample-summary (decode (h {:request-method :get :uri "/api/summary"}))))
       (is (= sample-traces (decode (h {:request-method :get :uri "/api/traces"}))))
       (is (= sample-logs (decode (h {:request-method :get :uri "/api/logs"}))))
+      (let [script (h {:request-method :get :uri "/assets/otel-viewer.js"})]
+        (is (= 200 (:status script)))
+        (is (= "text/javascript; charset=UTF-8"
+               (get-in script [:headers "Content-Type"])))
+        (is (str/includes? (:body script) "dialog.showModal()")))
       (is (= {:ok true :upstream {:ok true}}
              (decode (h {:request-method :get :uri "/work"})))))
     (testing "HTML trace viewer and form action"
@@ -59,6 +64,12 @@
         (is (= 200 (:status page)))
         (is (= "text/html; charset=UTF-8" (get-in page [:headers "Content-Type"])))
         (is (str/includes? (:body page) "<details open>"))
+        (is (str/includes? (:body page)
+                           "class=\"otel-back-link\" href=\"/\">← All traces</a>"))
+        (is (str/includes? (:body page)
+                           "grid-template-columns:minmax(0,12rem) minmax(0,1fr)"))
+        (is (str/includes? (:body page)
+                           ".otel-span-meta dt,.otel-span-meta dd{min-width:0;overflow-wrap:anywhere}"))
         (is (= 303 (:status generated)))
         (is (= "/" (get-in generated [:headers "Location"])))
         (is (= 1 @flushes))))
@@ -104,10 +115,15 @@
     (is (str/includes? body "<main class=\"otel-viewer\">"))
     (is (str/includes? body ".otel-viewer{"))
     (is (str/includes? body "<form action=\"/work\" method=\"post\">"))
-    (is (str/includes? body "<a href=\"/traces/0123456789abcdef0123456789abcdef\">"))
+    (is (str/includes? body
+                       "href=\"/traces/0123456789abcdef0123456789abcdef\" data-otel-trace"))
+    (is (str/includes? body "<dialog class=\"otel-trace-dialog\""))
+    (is (str/includes? body
+                       "<script src=\"/assets/otel-viewer.js\" defer></script>"))
     (is (str/includes? (get-in response [:headers "Content-Security-Policy"])
                        "default-src 'none'"))
-    (is (not (str/includes? body "<script")))
+    (is (str/includes? (get-in response [:headers "Content-Security-Policy"])
+                       "script-src 'self'"))
     (is (not (str/includes? body "innerHTML"))))
   (testing "the reusable fragment escapes telemetry and needs no document shell"
     (let [body (viewer/render-fragment
@@ -116,6 +132,7 @@
                           :severity "WARN" :timestamp "now"}]})]
       (is (str/starts-with? body "<main class=\"otel-viewer\">"))
       (is (str/includes? body "&lt;script&gt;alert(1)&lt;/script&gt;"))
+      (is (not (str/includes? body "<dialog")))
       (is (not (str/includes? body "<script")))))
   (testing "a host can mount the fragment below its own route"
     (let [body (viewer/render-fragment

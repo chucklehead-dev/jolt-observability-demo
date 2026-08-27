@@ -6,5 +6,8 @@
     <title>{{title}}</title>
     <style>{{styles}}</style>
   </head>
-  <body>{{content}}</body>
+  <body>
+    {{content}}
+    {% if enhancementPath %}<script src="{{enhancementPath}}" defer></script>{% endif %}
+  </body>
 </html>
