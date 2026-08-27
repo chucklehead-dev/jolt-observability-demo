@@ -8,7 +8,7 @@ gitlibs_dir=${JOLT_GITLIBS_DIR:-/home/chuck/.cache/jolt-observability-demo-datas
 chdb_lib=${JOLT_CHDB_LIB:-/home/chuck/.cache/jolt-native/chdb/26.7.0/linux-x86_64/libchdb.so}
 hegel_lib=${HEGEL_LIBHEGEL_LIBRARY:-/home/chuck/.cache/jolt-hegel-v030-native/libhegel_c.so}
 jolt_wrapper=/home/chuck/ai-src/tools/jolt-with-chez-10.4.1
-scenarios=${THREADSTATUS_PROBE_SCENARIOS:-"startup work post-flush viewer sse sse-work mixed-stress"}
+scenarios=${THREADSTATUS_PROBE_SCENARIOS:-"startup work post-flush viewer sse sse-work otlp otlp-sse mixed-stress"}
 repeat=${THREADSTATUS_PROBE_REPEAT:-1}
 
 cd "$repo_dir"

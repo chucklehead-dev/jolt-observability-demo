@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [db.jdbc]
             [demo.datastar :as demo-datastar]
+            [demo.otlp :as demo-otlp]
             [jdbc.chdb]
             [jdbc.core :as jdbc]
             [jolt.http-client :as http-client]
@@ -10,6 +11,7 @@
             [otel.context :as context]
             [otel.exporter.chdb :as chdb-export]
             [otel.logs :as logs]
+            [otel.otlp.http-receiver :as otlp-receiver]
             [otel.propagation :as propagation]
             [otel.sdk :as sdk]
             [otel.trace :as trace]
@@ -173,6 +175,7 @@
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/work") "/work"
         (= path "/upstream") "/upstream"
+        (= path otlp-receiver/traces-path) otlp-receiver/traces-path
         :else "/*"))
 
 (defn- real-work! [{:keys [port tracer logger propagator]}]
@@ -203,7 +206,7 @@
   "Build the handler context. Query and work functions are injectable so pure
   Ring tests need neither native state nor a live socket."
   [{:keys [connection port tracer logger propagator flush-fn stream-state
-           summary-fn traces-fn trace-fn logs-fn work-fn]
+           summary-fn traces-fn trace-fn logs-fn work-fn otlp-handler]
     :or {port 8080}}]
   {:connection connection :port port
    :tracer (or tracer (sdk/tracer "demo.http"))
@@ -215,11 +218,17 @@
    :traces-fn (or traces-fn #(query-traces connection))
    :trace-fn (or trace-fn #(query-trace connection %))
    :logs-fn (or logs-fn #(query-logs connection))
-   :work-fn (or work-fn real-work!)})
+   :work-fn (or work-fn real-work!)
+   :otlp-handler (or otlp-handler
+                     (fn [_] (error-response 503 "OTLP receiver unavailable")))})
 
-(defn raw-handler [{:keys [summary-fn traces-fn trace-fn logs-fn work-fn logger stream-state] :as app}]
+(defn raw-handler [{:keys [summary-fn traces-fn trace-fn logs-fn work-fn logger
+                           stream-state otlp-handler] :as app}]
   (fn [{:keys [request-method uri] :as request}]
     (cond
+      (= uri otlp-receiver/traces-path)
+      (otlp-handler request)
+
       (and (= :post request-method) (= uri "/work"))
       (try
         (work-fn app)
@@ -289,30 +298,32 @@
   (let [dispatch (raw-handler app)
         tracer (:tracer app)
         propagator (:propagator app)]
-    (fn [{:keys [request-method uri] :as request}]
-      (let [route (route-for uri)
-            method (str/upper-case (name (or request-method :unknown)))
-            viewer-route? (or (= route "/")
-                              (= route "/traces/:trace-id")
-                              (= route "/assets/otel-viewer.js")
-                              (str/starts-with? route "/api/"))
-            response (if viewer-route?
-                       (dispatch request)
-                       (let [parent (propagation/extract propagator context/root
-                                                         (or (:headers request) {}))]
-                         (trace/with-span [span tracer (str "HTTP " method " " route)
-                                           {:kind :server
-                                            :parent parent
-                                            :attributes {:http.request.method method
-                                                         :http.route route :url.path uri}}]
-                           (let [response (dispatch request) status (:status response)]
-                             (trace/set-attribute! span :http.response.status_code status)
-                             (when (>= status 500)
-                               (trace/set-status! span :error (str "HTTP " status)))
-                             response))))]
-          (when (::flush? response)
-            ((:flush-fn app)))
-          (dissoc response ::flush?)))))
+    (otlp-receiver/wrap-suppress-receiver-telemetry
+     (fn [{:keys [request-method uri] :as request}]
+       (let [route (route-for uri)
+             method (str/upper-case (name (or request-method :unknown)))
+             untraced? (or (otlp-receiver/telemetry-suppressed? request)
+                           (= route "/")
+                           (= route "/traces/:trace-id")
+                           (= route "/assets/otel-viewer.js")
+                           (str/starts-with? route "/api/"))
+             response (if untraced?
+                        (dispatch request)
+                        (let [parent (propagation/extract propagator context/root
+                                                          (or (:headers request) {}))]
+                          (trace/with-span [span tracer (str "HTTP " method " " route)
+                                            {:kind :server
+                                             :parent parent
+                                             :attributes {:http.request.method method
+                                                          :http.route route :url.path uri}}]
+                            (let [response (dispatch request) status (:status response)]
+                              (trace/set-attribute! span :http.response.status_code status)
+                              (when (>= status 500)
+                                (trace/set-status! span :error (str "HTTP " status)))
+                              response))))]
+           (when (::flush? response)
+             ((:flush-fn app)))
+           (dissoc response ::flush?))))))
 
 (defn- env-port []
   (let [raw (System/getenv "DEMO_PORT")]
@@ -334,7 +345,8 @@
          (try
            (let [app (app-context {:connection conn :port port
                                    :propagator (:propagator otel)
-                                   :flush-fn #(sdk/force-flush! otel)})
+                                   :flush-fn #(sdk/force-flush! otel)
+                                   :otlp-handler (demo-otlp/handler exporter)})
                  server (http-server/run-server (handler app) :port port
                                                 :server-name "127.0.0.1"
                                                 :reuse-address? true)

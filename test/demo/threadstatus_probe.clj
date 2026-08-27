@@ -1,6 +1,7 @@
 (ns demo.threadstatus-probe
   "Fresh-process workload probe for ClickHouse ThreadStatus diagnostics."
-  (:require [demo.main :as demo]
+  (:require [clojure.data.json :as json]
+            [demo.main :as demo]
             [jolt.http-client :as http-client]
             [otel.sdk :as sdk]))
 
@@ -22,6 +23,40 @@
     (get! (str base "/?datastar-sse=true") {:socket-timeout 1200})
     (catch Throwable _ nil)))
 
+(defn- otlp-body [i]
+  (let [trace-id (format "%032x" (inc i))
+        root-id (format "%016x" (+ 1000 (* 2 i)))
+        child-id (format "%016x" (+ 1001 (* 2 i)))
+        start (+ 1785609674781645000 (* i 10000000))]
+    (json/write-str
+     {"resourceSpans"
+      [{"resource" {"attributes"
+                     [{"key" "service.name"
+                       "value" {"stringValue" "threadstatus-otlp"}}]}
+        "scopeSpans"
+        [{"scope" {"name" "demo.threadstatus"}
+          "spans"
+          [{"traceId" trace-id "spanId" root-id "name" "probe-root"
+            "kind" 2 "startTimeUnixNano" (str start)
+            "endTimeUnixNano" (str (+ start 4000000))}
+           {"traceId" trace-id "spanId" child-id "parentSpanId" root-id
+            "name" "probe-child" "kind" 3
+            "startTimeUnixNano" (str (+ start 1000000))
+            "endTimeUnixNano" (str (+ start 3000000))}]}]}]})))
+
+(defn- otlp! [base i]
+  (let [response
+        (http-client/post
+         (str base "/v1/traces")
+         {:headers {"Content-Type" "application/json"}
+          :body (otlp-body i)
+          :conn-timeout 2000 :socket-timeout 5000
+          :throw-exceptions false})]
+    (when-not (= 200 (:status response))
+      (throw (ex-info "OTLP probe export failed"
+                      {:index i :status (:status response)
+                       :body (:body response)})))))
+
 (defn- exercise! [scenario base]
   (case scenario
     "startup" nil
@@ -37,6 +72,12 @@
                  (let [reader (future (sse! base))]
                    (Thread/sleep 150)
                    (enhanced-work! base)
+                   @reader))
+    "otlp" (dotimes [i 24] (otlp! base i))
+    "otlp-sse" (dotimes [round 6]
+                 (let [reader (future (sse! base))]
+                   (Thread/sleep 150)
+                   (dotimes [i 4] (otlp! base (+ (* round 4) i)))
                    @reader))
     "mixed-stress"
     (dotimes [_ 4]

@@ -38,6 +38,10 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   creates a server span, a nested client span, and correlated INFO logs; errors
   are recorded and return 502.
 - `GET /upstream` returns a fixed JSON payload and records one server span/log.
+- `POST /v1/traces` accepts OTLP/HTTP JSON traces through the host-agnostic
+  `otel.otlp.http-receiver`. The demo parser measures actual UTF-8 encoded bytes,
+  limits bodies to 1 MiB, rejects compression, and admits one parse/export at a
+  time because all signals share one embedded chDB connection.
 - Any other route returns 404. Unsupported methods return 405.
 
 ## Telemetry and queries
@@ -66,6 +70,17 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - Viewer HTML, assets, JSON APIs, trace detail, and SSE snapshot rendering are
   excluded from instrumentation so observing telemetry cannot recursively
   generate more viewer telemetry.
+- `/v1/traces` is marked by the receiver suppression wrapper before HTTP
+  instrumentation inspects the request. Receiver parsing, export responses, and
+  subsequent viewer reads therefore cannot create an ingest feedback loop.
+- Every non-success OTLP response closes its HTTP/1.1 connection. The pinned
+  jolt-http host has no request-body cancellation method; connection teardown
+  closes its bounded body channel and releases a producer when policy rejects
+  before consuming the body, the measured cap is crossed, or concurrency is
+  exhausted.
+- OTLP export is synchronous and has no fabricated timeout: the embedded chDB
+  query cannot be cancelled safely, so concurrency and body limits are the
+  truthful bounds for this initial receiver.
 
 ## Verification
 
@@ -77,9 +92,13 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - An integration test starts the server on a non-default port, calls `/work`
   with `jolt.http-client`, flushes telemetry, and proves the complete external
   parent/server/client/upstream parent chain, correlated logs, and HTML detail.
+- A second live integration posts a parent/child OTLP JSON trace, proves the
+  hierarchy through the JSON API and server-rendered viewer, observes it on an
+  already-open SSE stream, and verifies the receiver/viewer added no spans.
 - `scripts/probe-threadstatus.sh` runs startup, ordinary work, synchronous
   enhanced POST/flush, viewer polling,
-  SSE disconnect, concurrent SSE/work, and a mixed stress scenario in separate
+  SSE disconnect, concurrent SSE/work, repeated OTLP ingest, concurrent
+  SSE/OTLP ingest, and a mixed stress scenario in separate
   fresh Jolt processes. It preserves per-scenario stdout/stderr evidence and
   fails if the native ClickHouse `ThreadStatus` diagnostic appears.
   Each child runs under a pseudo-terminal because libclickhouse suppresses this

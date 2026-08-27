@@ -4,10 +4,15 @@
             [clojure.test :refer [deftest is testing]]
             [demo.datastar :as demo-datastar]
             [demo.main :as demo]
+            [demo.otlp :as demo-otlp]
             [jolt.http-client :as http-client]
             [jolt.http.body :as http-body]
+            [jolt.http.server :as http-server]
+            [otel.otlp.http-receiver :as otlp-receiver]
+            [otel.sdk.export :as export]
             [otel.sdk :as sdk]
-            [otel.viewer :as viewer]))
+            [otel.viewer :as viewer]
+            [teensyp.ffi-net :as net]))
 
 (def sample-summary {:traceCount 1 :spanCount 2 :logCount 1 :errorCount 0})
 (def sample-traces [{:traceId "0123456789abcdef0123456789abcdef"
@@ -43,6 +48,253 @@
 
 (defn decode [response]
   (json/read-str (:body response) :key-fn keyword))
+
+(def ^:private live-test-port (atom (+ 28600 (rand-int 200))))
+
+(defn- next-live-test-port [] (swap! live-test-port inc))
+
+(defn- raw-response!
+  "Send one raw HTTP request and require the server to answer and close within
+  the bound. Closing the client on timeout also releases the test worker."
+  [port request]
+  (let [socket (atom nil)
+        worker
+        (future
+          (let [client (net/connect-loopback port)]
+            (reset! socket client)
+            (try
+              (net/client-send-all client (.getBytes request "UTF-8"))
+              (loop [response ""]
+                (let [chunk (try
+                              (net/client-recv client 8192)
+                              (catch Throwable error
+                                (if (= :connection-reset
+                                       (:jolt.net/kind (ex-data error)))
+                                  ::reset
+                                  (throw error))))]
+                  (cond
+                    (= ::reset chunk) {:response response :reset? true}
+                    chunk (recur (str response (String. chunk "UTF-8")))
+                    :else {:response response :reset? false})))
+              (finally
+                (net/close! client)))))]
+    (let [response (deref worker 7000 ::timeout)]
+      (when (= ::timeout response)
+        (when-let [client @socket] (net/close! client))
+        (deref worker 2000 nil)
+        (throw (ex-info "raw loopback request did not complete"
+                        {:port port})))
+      response)))
+
+(defn- raw-status [{:keys [response]}]
+  (some-> (re-find #"HTTP/1\.1 ([0-9]+)" response) second parse-long))
+
+(defn- raw-header [{:keys [response]} header]
+  (let [pattern (re-pattern (str "(?i)(?:^|\\r?\\n)" header ":\\s*([^\\r\\n]+)"))]
+    (some-> (re-find pattern response) second str/trim str/lower-case)))
+
+(defn- stop-server-bounded! [server]
+  (let [worker (future (http-server/stop-server server) true)
+        result (deref worker 7000 ::timeout)]
+    (when (= ::timeout result)
+      (throw (ex-info "test HTTP server did not stop" {})))
+    result))
+
+(def otlp-trace-id "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+(def otlp-root-span-id "1111111111111111")
+(def otlp-child-span-id "2222222222222222")
+
+(def otlp-wire
+  {"resourceSpans"
+   [{"resource"
+     {"attributes"
+      [{"key" "service.name" "value" {"stringValue" "otlp-loopback"}}]}
+     "scopeSpans"
+     [{"scope" {"name" "demo.otlp" "version" "1"}
+       "spans"
+       [{"traceId" otlp-trace-id
+         "spanId" otlp-root-span-id
+         "name" "ingest-root"
+         "kind" 2
+         "startTimeUnixNano" "1785609674781645000"
+         "endTimeUnixNano" "1785609674785645000"
+         "status" {"code" 1}}
+        {"traceId" otlp-trace-id
+         "spanId" otlp-child-span-id
+         "parentSpanId" otlp-root-span-id
+         "name" "ingest-child"
+         "kind" 3
+         "startTimeUnixNano" "1785609674782645000"
+         "endTimeUnixNano" "1785609674784645000"
+         "status" {"code" 1}}]}]}]})
+
+(defn- chunked-request-body [chunks]
+  (let [remaining (atom chunks)]
+    (reify http-body/RequestBody
+      (body-recv [_]
+        (let [chunk (first @remaining)]
+          (swap! remaining next)
+          chunk))
+      (body-bytes [_] (throw (ex-info "parser must read bounded chunks" {})))
+      (body-string [_ _] (throw (ex-info "parser must count encoded bytes" {}))))))
+
+(deftest otlp-parser-counts-actual-utf8-bytes-and-stops-at-limit
+  (let [payload (json/write-str {"resourceSpans" [] "label" "trace-😀"})
+        encoded (.getBytes payload "UTF-8")
+        split (quot (alength encoded) 2)
+        left (byte-array split)
+        right (byte-array (- (alength encoded) split))]
+    (System/arraycopy encoded 0 left 0 split)
+    (System/arraycopy encoded split right 0 (alength right))
+    (let [parsed (demo-otlp/parse-json-body
+                  {:body (chunked-request-body [left right])}
+                  (alength encoded))]
+      (is (= (alength encoded) (:encoded-bytes parsed)))
+      (is (= "trace-😀" (get (:value parsed) "label"))))
+    (let [failure (try
+                    (demo-otlp/parse-json-body
+                     {:body (chunked-request-body [left right])}
+                     (dec (alength encoded)))
+                    nil
+                    (catch Throwable error error))]
+      (is (= :otel.otlp.http-receiver/body-too-large
+             (:type (ex-data failure))))
+      (is (= (alength encoded) (:actual (ex-data failure)))))))
+
+(deftest otlp-ring-policy-is-suppressed-before-instrumentation
+  (let [suppressed? (atom nil)
+        exported (atom [])
+        receiver-handler
+        (demo-otlp/wrap-close-rejected-bodies
+         (otlp-receiver/handler
+          {:parse-body (fn [request limit]
+                         (reset! suppressed?
+                                 (otlp-receiver/telemetry-suppressed? request))
+                         (demo-otlp/parse-json-body request limit))
+           :exporter ::fake
+           :export-spans! (fn [_ spans]
+                            (swap! exported into spans)
+                            true)
+           :max-body-bytes demo-otlp/max-body-bytes
+           :max-concurrency demo-otlp/max-concurrency}))
+        h (demo/handler (assoc (test-app) :otlp-handler receiver-handler))
+        body (json/write-str otlp-wire)
+        request {:request-method :post :uri "/v1/traces"
+                 :headers {"content-type" "application/json"}
+                 :body body}
+        response (h request)]
+    (is (= "/v1/traces" (demo/route-for "/v1/traces")))
+    (is (= 200 (:status response)))
+    (is (true? @suppressed?))
+    (is (= ["ingest-root" "ingest-child"] (mapv :name @exported)))
+    (is (= 405 (:status (h (assoc request :request-method :get)))))
+    (is (= 415 (:status (h (assoc-in request [:headers "content-type"]
+                                  "application/x-protobuf")))))
+    (let [too-large (h (assoc-in request [:headers "content-length"]
+                                 (str (inc demo-otlp/max-body-bytes))))]
+      (is (= 413 (:status too-large)))
+      (is (= "close" (get-in too-large [:headers "Connection"]))))))
+
+(deftest rejected-live-otlp-bodies-release-the-http-producer
+  (let [port (next-live-test-port)
+        block-export? (atom false)
+        export-entered (promise)
+        release-export (promise)
+        exporter
+        (reify export/SpanExporter
+          (export-spans! [_ _]
+            (when @block-export?
+              (deliver export-entered true)
+              @release-export)
+            true)
+          (flush-exporter! [_] true)
+          (shutdown-exporter! [_] true))
+        app (assoc (test-app) :otlp-handler (demo-otlp/handler exporter))
+        server (http-server/run-server (demo/handler app)
+                                       :port port :server-name "127.0.0.1"
+                                       :reuse-address? true)]
+    (Thread/sleep 250)
+    (try
+      (testing "oversized declared length rejects early and releases a queued producer"
+        (let [body (apply str (repeat 100000 "x"))
+              response
+              (raw-response!
+               port
+               (str "POST /v1/traces HTTP/1.1\r\n"
+                    "Host: localhost\r\n"
+                    "Content-Type: application/json\r\n"
+                    "Content-Length: " (inc demo-otlp/max-body-bytes) "\r\n\r\n"
+                    body))]
+          (is (or (:reset? response)
+                  (and (= 413 (raw-status response))
+                       (= "close" (raw-header response "connection"))))
+              "the rejected socket terminates instead of parking its producer")))
+
+      (testing "measured chunked limit crossing releases unread body bytes"
+        (let [chunk-size (+ demo-otlp/max-body-bytes 8192)
+              body (apply str (repeat chunk-size "x"))
+              response
+              (raw-response!
+               port
+               (str "POST /v1/traces HTTP/1.1\r\n"
+                    "Host: localhost\r\n"
+                    "Content-Type: application/json\r\n"
+                    "Transfer-Encoding: chunked\r\n\r\n"
+                    (Long/toHexString chunk-size) "\r\n" body "\r\n"))]
+          (is (or (:reset? response)
+                  (and (= 413 (raw-status response))
+                       (= "close" (raw-header response "connection"))))
+              "the cap-crossing socket terminates with unread chunk bytes")))
+
+      (testing "concurrent rejection releases its body while the admitted export proceeds"
+        (reset! block-export? true)
+        (let [payload (json/write-str otlp-wire)
+              admitted
+              (future
+                (http-client/post
+                 (str "http://127.0.0.1:" port "/v1/traces")
+                 {:headers {"Content-Type" "application/json"}
+                  :body payload :conn-timeout 2000 :socket-timeout 5000
+                  :throw-exceptions false}))]
+          (is (= true (deref export-entered 5000 ::timeout))
+              "first request owns the receiver concurrency slot")
+          (let [policy-rejected
+                (raw-response!
+                 port
+                 (str "POST /v1/traces HTTP/1.1\r\n"
+                      "Host: localhost\r\n"
+                      "Content-Type: application/json\r\n"
+                      "Content-Length: 0\r\n\r\n"))]
+            (is (= 429 (raw-status policy-rejected)))
+            (is (= "close" (raw-header policy-rejected "connection"))))
+          (let [body (apply str (repeat 100000 "x"))
+                rejected
+                (raw-response!
+                 port
+                 (str "POST /v1/traces HTTP/1.1\r\n"
+                      "Host: localhost\r\n"
+                      "Content-Type: application/json\r\n"
+                      "Content-Length: " (count body) "\r\n\r\n" body))]
+            (is (or (:reset? rejected)
+                    (and (= 429 (raw-status rejected))
+                         (= "close" (raw-header rejected "connection"))))
+                "the concurrent body producer is released by connection close"))
+          (reset! block-export? false)
+          (deliver release-export true)
+          (let [response (deref admitted 5000 ::timeout)]
+            (is (not= ::timeout response))
+            (is (= 200 (:status response))))))
+
+      (is (= 200 (:status
+                  (http-client/get
+                   (str "http://127.0.0.1:" port "/api/summary")
+                   {:conn-timeout 2000 :socket-timeout 5000
+                    :throw-exceptions false})))
+          "the same server makes progress after all three rejection paths")
+      (finally
+        (deliver release-export true)
+        (is (true? (stop-server-bounded! server))
+            "rejected request producers do not strand server shutdown")))))
 
 (deftest pure-handler-statuses-and-shapes
   (let [flushes (atom 0)
@@ -266,6 +518,7 @@
                 initial (promise)
                 changed (promise)
                 first-event (atom nil)
+                cancel-writer? (atom false)
                 live-writer
                 (future
                   (try
@@ -273,6 +526,8 @@
                      (:body live-response) live-response
                      (reify http-body/Sink
                        (sink-write! [_ bytes offset length]
+                         (when @cancel-writer?
+                           (throw (ex-info "live test cancelled" {})))
                          (let [event (String. bytes offset length "UTF-8")]
                            (if-let [first @first-event]
                              (when (not= first event)
@@ -281,7 +536,7 @@
                              (do (reset! first-event event)
                                  (deliver initial event)))))
                        (sink-close! [_] nil)))
-                    (catch Throwable _)))
+                    (catch Throwable _ :cancelled)))
                 _ (is (not= :timeout (deref initial 5000 :timeout))
                       "the live stream emits its initial durable snapshot")
                 generated (http-client/post
@@ -289,12 +544,87 @@
                            {:headers {"X-Otel-Enhancement" "fetch"}
                             :throw-exceptions false})
                 update-event (deref changed 5000 :timeout)
-                _ @live-writer
+                _ (reset! cancel-writer? true)
+                writer-result (deref live-writer 5000 ::timeout)
                 after-post (:traceCount (decode (http-client/get (str base "/api/summary"))))]
             (is (= 204 (:status generated)))
             (is (not= :timeout update-event)
                 "an open SSE stream receives the generated trace without refresh")
+            (is (= :cancelled writer-result)
+                "the in-memory SSE writer cancels and completes within the bound")
             (is (str/includes? update-event "class=\"otel-trace-list\""))
             (is (= (inc before-post) after-post)
                 "POST returns only after its request span is durably flushed"))))
       (finally (demo/stop! lifecycle)))))
+
+(deftest live-otlp-parent-child-ingestion-without-feedback
+  (let [port (+ 27050 (rand-int 900))
+        lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
+        base (str "http://127.0.0.1:" port)
+        live-response ((demo/handler (:app lifecycle))
+                       {:request-method :get :uri "/"
+                        :query-string "datastar-sse=true" :headers {}})
+        initial (promise)
+        changed (promise)
+        writes (atom 0)
+        cancel-writer? (atom false)
+        live-writer
+        (future
+          (try
+            (http-body/write-body-to-sink
+             (:body live-response) live-response
+             (reify http-body/Sink
+               (sink-write! [_ bytes offset length]
+                 (when @cancel-writer?
+                   (throw (ex-info "OTLP live test cancelled" {})))
+                 (let [event (String. bytes offset length "UTF-8")
+                       n (swap! writes inc)]
+                   (deliver initial event)
+                   (when (str/includes? event otlp-trace-id)
+                     (deliver changed event)
+                     (throw (ex-info "OTLP live update observed" {})))
+                   (when (> n 8)
+                     (throw (ex-info "bounded live test exhausted writes" {})))))
+               (sink-close! [_] nil)))
+            (catch Throwable _ :cancelled)))]
+    (try
+      (is (not= :timeout (deref initial 5000 :timeout))
+          "SSE emits its initial static snapshot")
+      (let [payload (json/write-str otlp-wire)
+            response (http-client/post
+                      (str base "/v1/traces")
+                      {:headers {"Content-Type" "application/json"}
+                       :body payload
+                       :conn-timeout 2000 :socket-timeout 5000
+                       :throw-exceptions false})
+            update-event (deref changed 5000 :timeout)]
+        (is (= 200 (:status response)))
+        (is (= {} (decode response)))
+        (is (not= :timeout update-event)
+            "the open SSE stream observes directly exported OTLP spans")
+        (is (str/includes? update-event "ingest-root"))
+        (reset! cancel-writer? true)
+        (is (= :cancelled (deref live-writer 5000 ::timeout))
+            "the OTLP SSE writer cancels and completes within the bound")
+        (let [summary (decode (http-client/get (str base "/api/summary")))
+              traces (decode (http-client/get (str base "/api/traces")))
+              trace-summary (some #(when (= otlp-trace-id (:traceId %)) %) traces)
+              detail (decode (http-client/get
+                              (str base "/api/traces/" otlp-trace-id)))
+              tree (:spanTree detail)
+              root (first tree)
+              page (http-client/get (str base "/traces/" otlp-trace-id))]
+          (is (= {:traceCount 1 :spanCount 2 :logCount 0 :errorCount 0}
+                 summary)
+              "receiver, API, viewer, and SSE reads create no feedback spans")
+          (is (= "ingest-root" (:rootSpan trace-summary)))
+          (is (= 2 (:spanCount trace-summary)))
+          (is (= otlp-root-span-id (:spanId root)))
+          (is (= [otlp-child-span-id] (mapv :spanId (:children root))))
+          (is (= 200 (:status page)))
+          (is (str/includes? (:body page) "ingest-root"))
+          (is (str/includes? (:body page) "ingest-child"))))
+      (finally
+        (reset! cancel-writer? true)
+        (deref live-writer 5000 ::timeout)
+        (demo/stop! lifecycle)))))
