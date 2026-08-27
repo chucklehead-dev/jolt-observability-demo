@@ -169,9 +169,69 @@
                  "demo/query-interpolation" "trace id was interpolated into SQL"
                  {:trace-id trace-id}))))))
 
+(defn- trace-filter-boundary-property []
+  (h/run-test!
+   {:name "demo trace filter boundary"
+    :database "" :verbosity :quiet
+    :derandomize? true :test-cases 140}
+   (fn [_]
+     (let [service (h/draw! (g/string {:max-size 300
+                                       :alphabet "abcXYZ0123456789"}))
+           operation (h/draw! (g/string {:max-size 300
+                                         :alphabet "defUVW456789"}))
+           status (h/draw! (g/sampled-from ["" "ok" "error" "bogus"]))
+           window (h/draw! (g/sampled-from ["" "15m" "1h" "24h" "forever"]))
+           duration (h/draw! (g/sampled-from ["" "0" "12.5" "-1" "NaN"]))
+           query (str "service=" service "&operation=" operation
+                      "&status=" status "&window=" window
+                      "&min-duration-ms=" duration)
+           selected (demo/trace-filter-selection query)
+           calls (atom [])]
+       (check! (<= (count (:service selected)) 100)
+               "demo/filter-service-bound" "service filter exceeded its cap" {})
+       (check! (<= (count (:operation selected)) 200)
+               "demo/filter-operation-bound" "operation filter exceeded its cap" {})
+       (check! (contains? #{"" "ok" "error"} (:status selected))
+               "demo/filter-status-allowlist" "invalid status survived" {})
+       (check! (contains? #{"" "15m" "1h" "24h"} (:window selected))
+               "demo/filter-window-allowlist" "invalid window survived" {})
+       (check! (or (= "" (:min-duration-ms selected))
+                   (boolean (re-matches #"[0-9]+(?:\.[0-9]+)?"
+                                        (:min-duration-ms selected))))
+               "demo/filter-duration-grammar" "invalid duration survived" {})
+       (with-redefs [jdbc/fetch (fn [_ query-value]
+                                  (swap! calls conj query-value)
+                                  [])]
+         (demo/query-traces ::connection selected 2000000000000000000))
+       (let [[_ & parameter-tail] (first @calls)
+             ;; Jolt binds an absent rest-destructuring tail as nil. The SQL
+             ;; vector contract is the ordered parameter sequence, so
+             ;; normalize it before comparing it with the vector model.
+             params (vec parameter-tail)
+             expected (cond-> []
+                        (not (str/blank? (:window selected)))
+                        (conj (- 2000000000000000000
+                                 (get {"15m" (* 15 60 1000000000)
+                                       "1h" (* 60 60 1000000000)
+                                       "24h" (* 24 60 60 1000000000)}
+                                      (:window selected))))
+                        (not (str/blank? (:service selected)))
+                        (conj (:service selected))
+                        (not (str/blank? (:operation selected)))
+                        (conj (:operation selected))
+                        (not (str/blank? (:min-duration-ms selected)))
+                        (conj (long (* (Double/parseDouble
+                                       (:min-duration-ms selected)) 1000000.0))))]
+         (h/fprn :selected selected :expected expected :actual params)
+         (check! (= expected params)
+                 "demo/filter-parameter-model"
+                 "filter parameters disagreed with the bounded model"
+                 {:selected selected :expected expected :actual params}))))))
+
 (defn run-properties! []
   [{:label "trace-id boundary" :result (trace-id-boundary-property)}
    {:label "route/method matrix" :result (route-method-property)}
    {:label "viewer escaping" :result (escaped-viewer-property)}
    {:label "bounded JSON" :result (bounded-json-property)}
-   {:label "bounded parameterized queries" :result (bounded-query-property)}])
+   {:label "bounded parameterized queries" :result (bounded-query-property)}
+   {:label "trace filter boundary" :result (trace-filter-boundary-property)}])

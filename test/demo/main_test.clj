@@ -8,6 +8,8 @@
             [jolt.http-client :as http-client]
             [jolt.http.body :as http-body]
             [jolt.http.server :as http-server]
+            [jdbc.core :as jdbc]
+            [otel.exporter.chdb.explorer :as explorer]
             [otel.otlp.http-receiver :as otlp-receiver]
             [otel.sdk.export :as export]
             [otel.sdk :as sdk]
@@ -68,6 +70,78 @@
             [otlp-receiver/logs-path true]
             [otlp-receiver/metrics-path true]]
            @seen))))
+
+(deftest trace-workbench-query-selection-is-bounded-and-applied
+  (is (= {"service" "api service" "operation" "GET /users"}
+         (demo/parse-query-params
+          "service=api+service&operation=GET%20%2Fusers&service=ignored")))
+  (is (= {:service "" :operation "" :status ""
+          :min-duration-ms "" :window ""}
+         (demo/trace-filter-selection "service=%zz&status=maybe")))
+  (let [seen (atom [])
+        app (demo/app-context
+             {:summary-fn (constantly sample-summary)
+              :filtered-traces-fn
+              (fn [selection now]
+                (swap! seen conj [:traces selection now])
+                sample-traces)
+              :trace-filter-options-fn
+              (fn [selection now]
+                (swap! seen conj [:options selection now])
+                {:selected selection
+                 :service-options [{:value "api" :label "API"}]
+                 :status-options [{:value "error" :label "Error"}]
+                 :window-options [{:value "1h" :label "Last hour"}]})
+              :now-nanos-fn (constantly 123)
+              :trace-fn (fn [id] {:traceId id :spans [] :spanTree [] :logs []})
+              :logs-fn (constantly sample-logs)
+              :work-fn (fn [_] {:upstream {:ok true}})})
+        query "service=api&operation=GET+%2Fusers&status=error&min-duration-ms=12.5&window=1h"
+        response ((demo/raw-handler app)
+                  {:request-method :get :uri "/" :query-string query})
+        selected {:service "api" :operation "GET /users" :status "error"
+                  :min-duration-ms "12.5" :window "1h"}]
+    (is (= 200 (:status response)))
+    (is (str/includes? (:body response) "value=\"api\" selected"))
+    (is (str/includes? (:body response) "value=\"GET /users\""))
+    (is (= [[:options selected 123] [:traces selected 123]] @seen))
+    (reset! seen [])
+    (is (= sample-traces
+           (decode ((demo/raw-handler app)
+                    {:request-method :get :uri "/api/traces"
+                     :query-string query}))))
+    (is (= [[:traces selected 123]] @seen))))
+
+(deftest trace-workbench-query-is-bounded-parameterized-and-group-safe
+  (let [calls (atom [])
+        now 2000000000000000000
+        selected {:service "api'; DROP TABLE otel_traces; --"
+                  :operation "GET /users" :status "error"
+                  :min-duration-ms "12.5" :window "1h"}]
+    (with-redefs [jdbc/fetch (fn [_ query] (swap! calls conj query) [])]
+      (demo/query-traces ::connection selected now))
+    (let [[sql start service operation duration] (first @calls)]
+      (is (= (- now (* 60 60 1000000000)) start))
+      (is (= (:service selected) service))
+      (is (= "GET /users" operation))
+      (is (= 12500000 duration))
+      (is (not (str/includes? sql (:service selected))))
+      (is (not (str/includes? sql (:operation selected))))
+      (is (str/includes? sql "GROUP BY TraceId HAVING"))
+      (is (str/includes? sql "countIf(ServiceName = ?) > 0"))
+      (is (str/includes? sql "positionCaseInsensitiveUTF8(SpanName, ?)"))
+      (is (str/includes? sql "max(Duration) >= ?"))
+      (is (str/includes? sql "LIMIT 100"))))
+  (with-redefs [explorer/top-values
+                (fn [_ request]
+                  (is (= :spans (:signal request)))
+                  [{:field :service-name :value "worker" :count 3}])]
+    (let [model (demo/query-trace-filter-options
+                 ::connection {:service "api"} 2000000000000000000)]
+      (is (= [{:value "api" :label "api"}
+              {:value "worker" :label "worker (3)"}]
+             (:service-options model)))
+      (is (= "api" (get-in model [:selected :service]))))))
 
 (def ^:private live-test-port (atom (+ 28600 (rand-int 200))))
 
@@ -472,6 +546,30 @@
   (is (not (demo-datastar/sse-request?
             {:query-string "datastar-sse=true%0Aevent:evil"}))
       "only the exact flag is recognized; selector input is ignored"))
+
+(deftest datastar-stream-stops-for-server-shutdown
+  (let [state (demo-datastar/stream-state
+               {:interval-ms 10 :heartbeat-ms 100 :max-streams 1})
+        response (demo-datastar/stream-response state (constantly "snapshot"))
+        writes (atom 0)
+        writer (future
+                 (http-body/write-body-to-sink
+                  (:body response) response
+                  (reify http-body/Sink
+                    (sink-write! [_ _ _ _] (swap! writes inc))
+                    (sink-close! [_] nil))))]
+    (loop [attempt 0]
+      (when (and (zero? @writes) (< attempt 100))
+        (Thread/sleep 5)
+        (recur (inc attempt))))
+    (is (pos? @writes) "the live writer started")
+    (demo-datastar/stop-streams! state)
+    (is (nil? (deref writer 1000 ::timeout))
+        "shutdown finishes the stream without a peer write failure")
+    (is (= 0 @(:active state)) "shutdown releases the stream permit")
+    (is (= 503 (:status (demo-datastar/stream-response
+                         state (constantly "late"))))
+        "shutdown rejects new streams")))
 
 (deftest live-loopback-integration
   (let [port (+ 24000 (rand-int 3000))

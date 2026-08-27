@@ -17,7 +17,15 @@
   ([] (stream-state {}))
   ([options]
    {:options (merge default-options options)
-    :active (atom 0)}))
+    :active (atom 0)
+    :stopped? (atom false)}))
+
+(defn stop-streams!
+  "Stop admitting streams and ask active streams to finish at their next
+  bounded polling interval so HTTP server shutdown can drain."
+  [state]
+  (reset! (:stopped? state) true)
+  nil)
 
 (defn init-attributes
   "CSP-safe marker consumed by the external viewer enhancement script."
@@ -32,11 +40,12 @@
    (some #(= "datastar-sse=true" %)
          (str/split (or query-string "") #"&"))))
 
-(defn- acquire! [{:keys [active options]}]
+(defn- acquire! [{:keys [active stopped? options]}]
   (let [limit (:max-streams options)]
     (loop []
       (let [n @active]
         (cond
+          @stopped? false
           (>= n limit) false
           (compare-and-set! active n (inc n)) true
           :else (recur))))))
@@ -51,19 +60,20 @@
     (let [{:keys [interval-ms heartbeat-ms]} (:options state)]
       (try
         (loop [previous nil heartbeat-at (System/currentTimeMillis)]
-          (let [html (render)
-                now (System/currentTimeMillis)
-                changed? (not= html previous)
-                heartbeat? (>= (- now heartbeat-at) heartbeat-ms)]
-            (cond
-              changed?
-              (write-text! sink
-                           (datastar/patch-elements-event html "#otel-live" "inner"))
+          (when-not @(:stopped? state)
+            (let [html (render)
+                  now (System/currentTimeMillis)
+                  changed? (not= html previous)
+                  heartbeat? (>= (- now heartbeat-at) heartbeat-ms)]
+              (cond
+                changed?
+                (write-text! sink
+                             (datastar/patch-elements-event html "#otel-live" "inner"))
 
-              heartbeat?
-              (write-text! sink ": keepalive\n\n"))
-            (Thread/sleep interval-ms)
-            (recur html (if (or changed? heartbeat?) now heartbeat-at))))
+                heartbeat?
+                (write-text! sink ": keepalive\n\n"))
+              (Thread/sleep interval-ms)
+              (recur html (if (or changed? heartbeat?) now heartbeat-at)))))
         (finally
           (swap! (:active state) dec))))))
 
