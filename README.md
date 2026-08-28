@@ -28,8 +28,8 @@ For the Samizdat-shaped model trace, point the demo at an OpenAI-compatible
 Lemonade server and use either model action in the header:
 
 ```sh
-DEMO_LEMONADE_BASE_URL=http://marvin.local:13305/v1 \
-DEMO_LEMONADE_MODEL=Qwen3.6-27B-MTP-GGUF \
+DEMO_LEMONADE_BASE_URL=http://model-host.example:8000/v1 \
+DEMO_LEMONADE_MODEL=local-model \
 DEMO_LEMONADE_DISABLE_THINKING=true \
 JOLT_CHDB_LIB=/path/to/libchdb.so jolt -m demo.main
 ```
@@ -52,6 +52,8 @@ Configuration is optional:
   (default `local-model-host`).
 - `DEMO_LEMONADE_DISABLE_THINKING` defaults to true; set it to `false` only when
   intentionally testing provider thinking behavior.
+
+![Navigating a complete agent trace](docs/screenshots/agent-trace-tour.gif)
 
 For persistent data, prefer a map dbspec from an embedding application. The
 standalone demo also accepts a `chdb:` URI through `DEMO_CHDB_SPEC`; the demo

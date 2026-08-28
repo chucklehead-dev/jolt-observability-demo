@@ -20,8 +20,8 @@
   (:import [java.net URLDecoder]))
 
 (def ^:private service-name "jolt-observability-demo")
-(def ^:private default-lemonade-base-url "http://marvin.local:13305/v1")
-(def ^:private default-lemonade-model "Qwen3.6-27B-MTP-GGUF")
+(def ^:private default-lemonade-base-url "http://127.0.0.1:8000/v1")
+(def ^:private default-lemonade-model "local-model")
 (def ^:private max-captured-response-length 2000)
 (def ^:private json-headers {"Content-Type" "application/json; charset=UTF-8"
                              "Cache-Control" "no-store"})
@@ -380,7 +380,6 @@
                    :gen_ai.request.temperature 0
                    :gen_ai.request.stream false
                    :server.address lemonade-telemetry-address
-                   :server.port 13305
                    :samizdat.response.content_state
                    (if capture-response? "captured" "omitted")}}]
     (when lemonade-disable-thinking?
@@ -407,8 +406,7 @@
              {:kind :client
               :attributes {:http.request.method "POST"
                            :url.template "/v1/chat/completions"
-                           :server.address lemonade-telemetry-address
-                           :server.port 13305}}]
+                           :server.address lemonade-telemetry-address}}]
             (let [response
                   (http-client/post
                    (str (str/replace lemonade-base-url #"/+$" "")

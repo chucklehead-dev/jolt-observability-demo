@@ -823,7 +823,7 @@
         (is (not-any? #(contains? (:attributes %)
                                   "samizdat.response.sanitized")
                       (:spans omitted)))
-        (is (not (str/includes? (pr-str (mapcat :spans details)) "marvin"))
+        (is (not (str/includes? (pr-str (mapcat :spans details)) "model.test"))
             "physical model hostnames are not emitted by the default telemetry label")
         (is (not (str/includes? (pr-str (mapcat :spans details))
                                 "private chain of thought"))

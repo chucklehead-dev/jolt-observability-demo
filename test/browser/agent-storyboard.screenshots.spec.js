@@ -52,7 +52,10 @@ test("capture metadata-only and sanitized-response agent traces", async ({page})
   await expect(generation).not.toContainText("Content not recorded");
 
   const html = await page.content();
-  expect(html.toLowerCase()).not.toContain("marvin");
+  if (process.env.DEMO_LEMONADE_BASE_URL) {
+    const configuredHostname = new URL(process.env.DEMO_LEMONADE_BASE_URL).hostname;
+    expect(html).not.toContain(configuredHostname);
+  }
   await dialog.screenshot({path: path.join("docs", "screenshots",
                                            "06-agent-with-response.png")});
 });

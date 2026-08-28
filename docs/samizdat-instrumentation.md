@@ -70,8 +70,8 @@ OpenAI-compatible API:
 
 ```sh
 HARNESS_PROVIDER=local \
-HARNESS_BASE_URL=http://marvin.local:13305/v1 \
-HARNESS_MODEL=Qwen3.6-27B-MTP-GGUF \
+HARNESS_BASE_URL=http://model-host.example:8000/v1 \
+HARNESS_MODEL=local-model \
 jolt serve
 ```
 

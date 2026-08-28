@@ -80,7 +80,7 @@ Run it with an endpoint reachable from the demo process and a neutral telemetry
 display address so private hostnames never enter checked-in screenshots:
 
 ```sh
-DEMO_LEMONADE_BASE_URL=http://model-host:13305/v1 \
+DEMO_LEMONADE_BASE_URL=http://model-host.example:8000/v1 \
 DEMO_LEMONADE_TELEMETRY_ADDRESS=local-model-host \
 DEMO_LEMONADE_DISABLE_THINKING=true \
 JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:agent-screenshots
@@ -89,3 +89,15 @@ JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:agent-screenshots
 ![Agent trace without response content](screenshots/05-agent-metadata-only.png)
 
 ![Agent trace with bounded sanitized response](screenshots/06-agent-with-response.png)
+
+The checked-in animated tour is generated against a deterministic local model
+fixture, so it contains no private endpoint or machine identity:
+
+```sh
+npm run docs:agent-gif
+```
+
+The recorder uses the pinned Playwright dependency and requires `ffmpeg` on
+`PATH` for the final WebM-to-GIF conversion.
+
+![Navigating the complete agent trace](screenshots/agent-trace-tour.gif)

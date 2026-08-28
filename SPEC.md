@@ -126,8 +126,8 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   reuses the same semantic story.
 - An optional live-model Playwright project calls both agent routes, verifies
   the control-loop hierarchy and privacy state, captures the paired docs
-  screenshots, and rejects the private `marvin` hostname anywhere in rendered
-  HTML. Its telemetry address is an explicit neutral override.
+  screenshots, and rejects the configured physical model hostname anywhere in
+  rendered HTML. Its telemetry address is an explicit neutral override.
 
 ## Adoption boundaries
 
