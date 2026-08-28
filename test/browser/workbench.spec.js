@@ -67,7 +67,7 @@ test("generated telemetry streams into the workbench without navigation", async 
       expect(span.attributes["demo.instrumentation.mode"]).toBeUndefined();
     }
     expect(server.attributes["http.route"]).toBe("/work");
-    expect(client.attributes["url.full"]).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/REDACTED$/);
+    expect(client.attributes["url.full"]).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/upstream$/);
   } else {
     for (const span of httpSpans) {
       expect(span.attributes["demo.instrumentation.mode"]).toBe("source-fallback");
