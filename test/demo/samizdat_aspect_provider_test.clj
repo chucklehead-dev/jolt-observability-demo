@@ -275,7 +275,7 @@
                         "private request body" "private model response"]]
           (is (not (.contains serialized secret))))))))
 
-(deftest manifest-identifies-the-uncommitted-embed-source-honestly
+(deftest library-supplied-manifest-identifies-the-embed-source
   (let [manifest (-> "META-INF/jolt/aspects/samizdat-m2-embed.edn"
                      io/resource slurp edn/read-string)
         embed (first (filter #(= :samizdat.embed/beam-run (:id %))

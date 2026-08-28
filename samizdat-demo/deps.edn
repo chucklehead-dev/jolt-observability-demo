@@ -4,7 +4,7 @@
         {:local/root ".."}
         io.github.casselc/samizdat
         {:git/url "https://github.com/casselc/samizdat.git"
-         :git/sha "35b01fddd20fa9e6d77678eadc2a2bcc6fb9ac2d"}
+         :git/sha "5949be3294bb9fd74669848ffa050cdcfd141458"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}}
