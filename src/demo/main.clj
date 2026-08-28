@@ -337,9 +337,7 @@
         (= path "/api/logs") "/api/logs"
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
         (= path "/assets/workbench.js") "/assets/workbench.js"
-        (= path oscope-path) oscope-path
-        (= path (oscope-web/export-path oscope-path))
-        (oscope-web/export-path oscope-path)
+        (oscope-web/handled-path? oscope-path path) path
         (contains? editor-paths path) path
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/workbench") "/workbench"
@@ -733,7 +731,7 @@
       (or (plotje-editor/handler request)
           (hiccup-editor/handler request))
 
-      (contains? #{oscope-path (oscope-web/export-path oscope-path)} uri)
+      (oscope-web/handled-path? oscope-path uri)
       (oscope-handler request)
 
       (otlp-receiver/receiver-request? request)
@@ -866,9 +864,7 @@
         (= route "/assets/otel-viewer.js")
         (= route "/workbench")
         (= route "/assets/workbench.js")
-        (contains? #{(:oscope-path app)
-                     (oscope-web/export-path (:oscope-path app))}
-                   route)
+        (oscope-web/handled-path? (:oscope-path app) route)
         (contains? editor-paths route)
         (contains? #{"/agent-work"
                      "/agent-work-with-response"
@@ -880,9 +876,7 @@
        (or (= route "/")
            (= route "/traces/:trace-id")
            (str/starts-with? route "/api/")
-           (contains? #{(:oscope-path app)
-                        (oscope-web/export-path (:oscope-path app))}
-                      route))))
+           (oscope-web/handled-path? (:oscope-path app) route))))
 
 (defn- source-http-fallback
   [app dispatch request route]
@@ -941,7 +935,7 @@
   source, SDK, and connection shutdown in ownership order."
   ([] (start! {}))
   ([{:keys [port db-spec workbench-adapter workbench-kind
-            workbench-source-close! oscope-path]
+            workbench-source-close! oscope-path propagator]
      :or {port (env-port)}}]
    (let [spec (or db-spec (System/getenv "DEMO_CHDB_SPEC") "chdb::memory:")
          conn (jdbc/connection spec)]
@@ -958,8 +952,9 @@
                  oscope-path (or oscope-path
                                  (System/getenv "DEMO_OSCOPE_PATH")
                                  oscope-web/default-path)
+                 propagator (or propagator (:propagator otel))
                  app (app-context {:connection conn :port port
-                                   :propagator (:propagator otel)
+                                   :propagator propagator
                                    :flush-fn #(sdk/force-flush! otel)
                                    :otlp-handler (demo-otlp/handler exporter)
                                    :oscope-source oscope-source
@@ -977,6 +972,8 @@
                          #(route-for (:uri %) (:oscope-path app))
                          :otel.instrumentation.http-server/capture-network-addresses?
                          false
+                         :otel.instrumentation.http-server/propagator
+                         propagator
                          :otel.instrumentation.http-server/on-end
                          #(context/with-instrumentation-suppressed
                             ((:flush-fn app))))

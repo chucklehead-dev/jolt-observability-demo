@@ -69,6 +69,12 @@ body begins with the Parquet `PAR1` signature. The complete trace, span, log,
 and error summary remains byte-for-byte equivalent before and after viewing,
 querying, and downloading, so the utility cannot recursively observe itself.
 
+With JavaScript enabled, open `/oscope` with **Live refresh** selected before
+generating work. The same Plotje/table screen grows without navigation. Select
+**Freeze for export**: the displayed absolute bounds move into the export form,
+later ingest no longer mutates the frozen screen, and refresh/asset traffic
+creates no trace.
+
 ## Compiler-woven beat
 
 `npm run test:browser:aspect` builds the same application with selected

@@ -17,6 +17,7 @@
             [otel.sdk :as sdk]
             [otel.viewer :as viewer]
             [oscope.live :as oscope]
+            [oscope.ui.web :as oscope-web]
             [teensyp.ffi-net :as net]))
 
 (def sample-summary {:traceCount 1 :spanCount 2 :logCount 1 :errorCount 0})
@@ -85,6 +86,29 @@
             [otlp-receiver/logs-path true]
             [otlp-receiver/metrics-path true]]
            @seen))))
+
+(deftest all-oscope-routes-reach-the-suppressed-embedded-handler
+  (let [seen (atom [])
+        path "/oscope"
+        routes [path
+                (oscope-web/export-path path)
+                (oscope-web/refresh-path path)
+                (oscope-web/live-asset-path path)]
+        app (assoc (test-app)
+                   :oscope-path path
+                   :oscope-handler
+                   (fn [request]
+                     (swap! seen conj
+                            [(:uri request)
+                             (context/instrumentation-suppressed?)])
+                     {:status 209 :headers {} :body "oscope"}))
+        h (demo/handler app)]
+    (doseq [route routes]
+      (is (= route (demo/route-for route path)))
+      (is (true? (demo/server-instrumentation-excluded?
+                  app {:request-method :get :uri route})))
+      (is (= 209 (:status (h {:request-method :get :uri route})))))
+    (is (= (mapv #(vector % true) routes) @seen))))
 
 (deftest agent-demo-routes-select-content-capture-without-http-wrapper-spans
   (let [calls (atom [])

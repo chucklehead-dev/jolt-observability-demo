@@ -145,9 +145,10 @@ the post-span completion hook prevents partial traces after redirects.
    anonymous, variadic, or generated-method seam requires a new contract.
 2. Generalize callback completion only when another library cannot express its
    lifecycle by wrapping already-explicit callback arguments.
-3. Add configurable propagator composition and malformed Trace Context cases
-   to the HTTP packages; client baggage injection is intentionally absent in
-   the current release.
+3. Keep the generic client's trace-only injection boundary explicit. The
+   server package now accepts a caller-selected inbound propagator and fails
+   closed to a fresh root for invalid or throwing configurations; retain the
+   woven malformed Trace Context and baggage-privacy matrix as a release gate.
 4. Keep Kindly presentation advisers beside each instrumentation vocabulary,
    while leaving stored telemetry and generic viewer APIs presentation-free.
 

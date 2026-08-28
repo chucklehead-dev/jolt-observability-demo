@@ -43,8 +43,10 @@ do not replace WIP local roots with branch names.
    admission, owned Arrow/Parquet bytes, real HTTP delivery, independent
    readers, half-open windows, truncation, and no viewer feedback. Plotje-compatible
    SVG remains platform-neutral; toolkit handles and ratoms remain shell-local.
-   Native chart rendering, explicit toolkit unmount ownership, standalone OTLP
-   serving, and streaming refresh remain follow-up gates.
+   Native chart rendering, standalone OTLP serving, and the opt-in web
+   Live/Freeze contract now pass. Explicit toolkit unmount ownership, native
+   asynchronous stale-completion rejection, and preserve-to-table policy remain
+   follow-up gates.
 
 No upstream pull request is part of this checklist until separately approved.
 Before any push, record exact parents, inspect every dirty worktree, run

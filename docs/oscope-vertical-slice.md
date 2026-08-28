@@ -23,6 +23,15 @@ SVG; a Glimmer/AppKit adapter can bind the same controls and either display the
 portable SVG or map the chart spec to a native chart view. Shell-local state
 such as focus, window geometry, and Glimmer ratoms stays outside the model.
 
+The web adapter keeps that boundary in its progressive live mode. A small
+same-origin asset permits one refresh request at a time, suspends hidden tabs,
+rejects stale/cancelled completions, and atomically replaces one complete
+`:oscope.view/version 1` fragment. Exponential retry backoff is capped. Freeze
+cancels pending work and copies the displayed screen's exact absolute bounds
+into the existing export form; it never reconstructs a moving window from the
+relative `:window` label. The initial page, manual query, and export remain
+fully functional with JavaScript disabled.
+
 This vertical slice supports one top-value distribution at a time over the
 explorer's current spans, logs, or metrics fields. Its query windows are 15
 minutes, 1 hour, 6 hours, or the explorer's hard 24-hour maximum; limits remain
@@ -57,7 +66,9 @@ clock, calls `compile-query`, `run`, and `screen`, and then atomically installs
 the returned screen. A synchronous web request may do that directly. A native
 shell should run the database effect away from its UI thread. Once either shell
 allows more than one query in flight, the completion event must echo
-`:request-id` and the state owner must discard stale completions. Loading,
+`:request-id` and the state owner must discard stale completions. The current
+web enhancement instead admits only one fetch and uses a monotonic generation
+to reject a completion after cancellation or Freeze. Loading,
 cancellation, and sanitized error presentation belong in a small shared app
 state around the canonical screen; they must not be represented by partially
 rewriting a successful screen.

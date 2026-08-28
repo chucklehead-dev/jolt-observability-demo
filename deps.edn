@@ -23,13 +23,13 @@
          :git/sha "52e3d32765b1f62ca13ced6d237d57f427771d25"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
-         :git/sha "62c3c6de8b87c34f48a71b3db00add6944e1ccb4"}
+         :git/sha "6be607c3158b0821c3591e2c23ce2287bddbd46f"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
         io.github.chucklehead-dev/oscope
         {:git/url "https://github.com/chucklehead-dev/oscope.git"
-         :git/sha "1025534929042a1a1a621fe31cd43ef855293619"}
+         :git/sha "3d25698274ea9bdc3970bc61cd43d7de8fd4dde5"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}

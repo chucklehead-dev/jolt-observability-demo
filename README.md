@@ -57,8 +57,8 @@ Configuration is optional:
 
 - `DEMO_PORT` selects the listening port (default `8080`).
 - `DEMO_CHDB_SPEC` selects the chDB database (default `chdb::memory:`).
-- `DEMO_OSCOPE_PATH` mounts the embeddable explorer and its derived export
-  route (default `/oscope` and `/oscope/export`).
+- `DEMO_OSCOPE_PATH` mounts the embeddable explorer and its derived refresh,
+  enhancement-asset, and export routes (default `/oscope`).
 - `JOLT_CHDB_LIB` selects an existing `libchdb` installation.
 - `JOLT_CHDB_CACHE_DIR` selects where the installer stores chDB.
 - `DEMO_LEMONADE_BASE_URL` selects the physical OpenAI-compatible endpoint,
@@ -198,7 +198,10 @@ controls, an accessible table, a validated Plotje spec, and the exact SQL-free
 query plan that produced it. `/oscope/export` downloads allowlisted physical
 span, log, or metric rows as Arrow or Parquet within explicit 24-hour,
 100,000-row, and 64-MiB result caps. One export remains admitted until its HTTP
-body drains, and both oscope routes are excluded from demo instrumentation.
+body drains. The static page remains fully functional without JavaScript; an
+opt-in Live mode refreshes the complete Plotje/table/provenance screen in place,
+and Freeze copies that exact half-open window into the export form. The viewer,
+refresh, asset, and export routes are all excluded from demo instrumentation.
 The native adapters consume the same screen without a second UI schema. See
 [docs/oscope-vertical-slice.md](docs/oscope-vertical-slice.md) and
 [docs/plotje-portability.md](docs/plotje-portability.md).
