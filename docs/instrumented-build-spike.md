@@ -42,6 +42,13 @@ provider package such as `jolt-otel-instrumentation-http` statically maps
 `:http/server` to advice. An application must explicitly select both pieces;
 dependency manifests never activate themselves.
 
+The same package may export a pure presentation adviser for the telemetry it
+defines. Advisers attach standard Kindly value metadata at render time rather
+than changing span storage. This keeps join-point vocabulary, emitted
+attributes, privacy policy, and recommended rendering together while the
+viewer remains domain-neutral. The viewer-specific option namespace is only a
+layout vocabulary; payloads use ordinary `:kind/*` values.
+
 A possible application configuration is:
 
 ```clojure
@@ -95,6 +102,9 @@ executor boundary.
 4. Weave the HTTP server handler plus `respond`/`raise` lifecycle. Extract the
    remote parent before calling the handler and end the span exactly once when
    the response completes or fails, including async handlers.
+5. Compose selected libraries' pure Kindly advisers over the bounded trace
+   tree before HTML rendering. Prove the raw API is unchanged and an unknown
+   or unsupported kind degrades to ordinary span metadata.
 
 The target demo trace is:
 
@@ -125,3 +135,5 @@ loads selected manifests before dependency analysis.
   headers by default.
 - Playwright observes the generated DB/client/server spans in the trace dialog
   without a page reload.
+- Library-supplied presentation advice follows Kindly scalar wrapping and
+  metadata rules, is bounded by the host, and never enters persisted telemetry.

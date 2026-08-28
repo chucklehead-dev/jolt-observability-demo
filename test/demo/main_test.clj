@@ -5,6 +5,7 @@
             [demo.datastar :as demo-datastar]
             [demo.main :as demo]
             [demo.otlp :as demo-otlp]
+            [demo.samizdat-kindly :as samizdat-kindly]
             [jolt.http-client :as http-client]
             [jolt.http.body :as http-body]
             [jolt.http.server :as http-server]
@@ -48,7 +49,9 @@
      :logs-fn (constantly sample-logs)
      :work-fn (fn [_] {:upstream {:ok true}})
      :agent-work-fn (fn [_ capture-response?]
-                      {:response-captured capture-response?})}))
+                      {:response-captured capture-response?})
+     :agent-intervention-work-fn
+     (fn [_] {:response-captured true :controller-intervened true})}))
 
 (defn decode [response]
   (json/read-str (:body response) :key-fn keyword))
@@ -87,17 +90,23 @@
         app (assoc (test-app)
                    :agent-work-fn (fn [_ capture-response?]
                                     (swap! calls conj capture-response?))
+                   :agent-intervention-work-fn
+                   (fn [_] (swap! calls conj :intervention))
                    :flush-fn #(swap! flushes inc))
         h (demo/handler app)]
     (is (= "/agent-work" (demo/route-for "/agent-work")))
     (is (= "/agent-work-with-response"
            (demo/route-for "/agent-work-with-response")))
+    (is (= "/agent-work-intervention"
+           (demo/route-for "/agent-work-intervention")))
     (is (= 303 (:status (h {:request-method :post :uri "/agent-work"}))))
     (is (= 204 (:status
                 (h {:request-method :post :uri "/agent-work-with-response"
                     :headers {"x-otel-enhancement" "fetch"}}))))
-    (is (= [false true] @calls))
-    (is (= 2 @flushes))))
+    (is (= 303 (:status
+                (h {:request-method :post :uri "/agent-work-intervention"}))))
+    (is (= [false true :intervention] @calls))
+    (is (= 3 @flushes))))
 
 (deftest trace-workbench-query-selection-is-bounded-and-applied
   (is (= {"service" "api service" "operation" "GET /users"}
@@ -765,27 +774,33 @@
                    :lemonade-model "test-model"
                    :lemonade-telemetry-address "local-model-host"
                    :lemonade-disable-thinking? true)
-        response-body
-        (json/write-str
-         {:choices [{:message {:role "assistant"
-                               :content "<think>private chain of thought</think>bounded sanitized answer"}
-                     :finish_reason "stop"}]
-          :usage {:prompt_tokens 17 :completion_tokens 5 :total_tokens 22}})
         requests (atom [])]
     (try
       (with-redefs
         [http-client/post
          (fn [url request]
-           (swap! requests conj [url (json/read-str (:body request)
-                                                  :key-fn keyword)])
-           {:status 200 :headers {} :body response-body})]
+           (let [payload (json/read-str (:body request) :key-fn keyword)
+                 revised? (> (count (:messages payload)) 1)
+                 content (if revised? "revised controlled answer"
+                             "<think>private chain of thought</think>bounded sanitized answer")]
+             (swap! requests conj [url payload])
+             {:status 200 :headers {}
+              :body (json/write-str
+                     {:choices [{:message {:role "assistant" :content content}
+                                 :finish_reason "stop"}]
+                      :usage {:prompt_tokens (if revised? 31 17)
+                              :completion_tokens (if revised? 7 5)
+                              :total_tokens (if revised? 38 22)}})}))]
         (let [h (demo/handler app)]
           (is (= 303 (:status
                       (h {:request-method :post :uri "/agent-work"}))))
           (is (= 303 (:status
                       (h {:request-method :post
-                          :uri "/agent-work-with-response"}))))))
-      (is (= 2 (count @requests)))
+                          :uri "/agent-work-with-response"}))))
+          (is (= 303 (:status
+                      (h {:request-method :post
+                          :uri "/agent-work-intervention"}))))))
+      (is (= 4 (count @requests)))
       (is (every? #(= "http://model.test/v1/chat/completions" (first %))
                   @requests))
       (is (every? #(= false
@@ -796,18 +811,23 @@
             details (mapv #(demo/query-trace (:connection lifecycle) (:traceId %))
                           traces)
             captured (some (fn [detail]
-                             (when (some #(= "bounded sanitized answer"
+                             (when (and (= 7 (count (:spans detail)))
+                                        (some #(= "bounded sanitized answer"
                                              (get-in % [:attributes
                                                         "samizdat.response.sanitized"]))
-                                         (:spans detail))
+                                              (:spans detail)))
                                detail))
                            details)
-            omitted (some #(when (not= (:traceId %) (:traceId captured)) %) details)]
-        (is (= 2 (count traces)) "agent routes do not create wrapper HTTP traces")
+            intervention (some #(when (= 11 (count (:spans %))) %) details)
+            omitted (some #(when (and (= 7 (count (:spans %)))
+                                      (not= (:traceId %) (:traceId captured))) %)
+                          details)]
+        (is (= 3 (count traces)) "agent routes do not create wrapper HTTP traces")
         (is (every? #(= "samizdat.run" (:rootSpan %)) traces))
-        (is (every? #(= 7 (:spanCount %)) traces))
+        (is (= [7 7 11] (sort (map :spanCount traces))))
         (is (some? captured))
         (is (some? omitted))
+        (is (some? intervention))
         (let [by-name (into {} (map (juxt :name identity)) (:spans captured))]
           (is (str/blank? (:parentSpanId (get by-name "samizdat.run"))))
           (doseq [[child parent]
@@ -820,6 +840,31 @@
             (is (= (:spanId (get by-name parent))
                    (:parentSpanId (get by-name child)))
                 (str child " is parented by " parent))))
+        (let [spans (:spans intervention)
+              by-name (into {} (map (juxt :name identity)) spans)
+              by-turn-name
+              (fn [name turn]
+                (some #(when (and (= name (:name %))
+                                  (= (str turn)
+                                     (str (get-in % [:attributes
+                                                    "samizdat.turn.number"])))) %)
+                      spans))
+              turn-1 (get by-name "samizdat.turn 1")
+              turn-2 (get by-name "samizdat.turn 2")
+              chat-1 (by-turn-name "chat" 1)
+              chat-2 (by-turn-name "chat" 2)
+              http-1 (by-turn-name "HTTP POST /v1/chat/completions" 1)
+              http-2 (by-turn-name "HTTP POST /v1/chat/completions" 2)]
+          (is (= (:spanId (get by-name "samizdat.branch B1"))
+                 (:parentSpanId turn-1)
+                 (:parentSpanId (get by-name "controller intervention"))
+                 (:parentSpanId turn-2)))
+          (is (= (:spanId turn-1) (:parentSpanId chat-1)))
+          (is (= (:spanId chat-1) (:parentSpanId http-1)))
+          (is (= (:spanId turn-2) (:parentSpanId chat-2)))
+          (is (= (:spanId chat-2) (:parentSpanId http-2)))
+          (is (= (:spanId turn-2)
+                 (:parentSpanId (get by-name "execute_tool response_length")))))
         (is (not-any? #(contains? (:attributes %)
                                   "samizdat.response.sanitized")
                       (:spans omitted)))
@@ -828,21 +873,63 @@
         (is (not (str/includes? (pr-str (mapcat :spans details))
                                 "private chain of thought"))
             "delimited reasoning is stripped even when an endpoint ignores thinking=false")
-        (is (every? #(not (str/includes? (pr-str (:attributes %))
-                                          "brain the size of a planet"))
-                    (mapcat :spans details))
-            "the prompt never enters span attributes")
+        (is (not (str/includes? (pr-str (:spans omitted))
+                                "brain the size of a planet"))
+            "metadata-only mode never records the prompt")
+        (is (str/includes? (pr-str (:spans captured))
+                           "brain the size of a planet")
+            "explicit exchange mode records the bounded prompt")
+        (let [api-response
+              ((demo/handler app)
+               {:request-method :get
+                :uri (str "/api/traces/" (:traceId captured))})]
+          (is (= 200 (:status api-response)))
+          (is (not (str/includes? (:body api-response) "kindly"))
+              "the raw trace API never persists presentation advice")
+          (is (not (str/includes? (:body api-response) "otel.viewer"))))
         (let [html-captured
-              (viewer/render-fragment {:trace captured})
+              (viewer/render-fragment
+               {:trace (samizdat-kindly/advise-trace captured)})
               html-omitted
-              (viewer/render-fragment {:trace omitted})]
+              (viewer/render-fragment
+               {:trace (samizdat-kindly/advise-trace omitted)})
+              html-intervention
+              (viewer/render-fragment
+               {:trace (samizdat-kindly/advise-trace intervention)})]
           (is (str/includes? html-captured "samizdat.control-loop"))
           (is (str/includes? html-captured ">Control</span>"))
+          (is (str/includes? html-captured "Captured prompt"))
+          (is (str/includes? html-captured "brain the size of a planet"))
           (is (str/includes? html-captured "bounded sanitized answer"))
           (is (str/includes? html-omitted
                              "Content not recorded (privacy default)"))
-          (is (not (str/includes? html-omitted "bounded sanitized answer")))))
+          (is (not (str/includes? html-omitted "bounded sanitized answer")))
+          (is (str/includes? html-intervention ">Intervention</span>"))
+          (is (str/includes? html-intervention
+                             "answer lacked a concrete telemetry mechanism"))
+          (is (str/includes? html-intervention "Controller intervention:"))
+          (is (str/includes? html-intervention "revised controlled answer"))))
       (finally (demo/stop! lifecycle)))))
+
+(deftest samizdat-advice-follows-kindly-value-metadata-contract
+  (let [advised
+        (samizdat-kindly/advise-trace
+         {:spanTree
+          [{:name "chat"
+            :attributes
+            {"gen_ai.operation.name" "chat"
+             "samizdat.prompt.content_state" "captured"
+             "samizdat.response.content_state" "captured"
+             "samizdat.prompt.sanitized" "bounded prompt"
+             "samizdat.response.sanitized" "bounded response"}}]})
+        note (get-in advised [:spanTree 0 :kindly :value])
+        prompt (second note)]
+    (is (= :kind/fragment (:kindly/kind (meta note))))
+    (is (= "Generation"
+           (get-in (meta note) [:kindly/options :otel.viewer/role])))
+    (is (= :kind/code (:kindly/kind (meta prompt))))
+    (is (= true (get-in (meta prompt) [:kindly/options :wrapped-value])))
+    (is (= ["bounded prompt"] prompt))))
 
 (deftest live-otlp-parent-child-ingestion-without-feedback
   (let [port (+ 27050 (rand-int 900))

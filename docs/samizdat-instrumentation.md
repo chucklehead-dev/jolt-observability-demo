@@ -88,11 +88,29 @@ logical endpoint label. Do not record the physical model hostname,
 prompts, system instructions, reasoning, response content, tool arguments or
 results, file contents, credentials, environment maps, SQL parameters, or raw
 provider error bodies. Content capture is a separate explicit mode, must pass
-through Samizdat's redaction boundary, is capped, and uses only
-`samizdat.response.sanitized` with
-`samizdat.response.content_state=captured`.
+through Samizdat's redaction boundary, is capped, and records
+`samizdat.prompt.sanitized` and `samizdat.response.sanitized` only when their
+corresponding `*.content_state` is `captured`.
 
 The standalone demo does not claim Samizdat's full redaction policy. It disables
 model thinking by default, strips common delimited `<think>...</think>` output,
 and caps the visible response. Capture mode still intentionally records model
 content and must not be enabled for sensitive workloads.
+
+## Library-owned presentation advice
+
+The generic viewer must not learn Samizdat span names or attribute vocabulary.
+Samizdat therefore supplies a rendering adviser beside these join-point rules.
+At the HTML boundary it maps a bounded span tree to the same tree with a
+`:kindly {:value value}` note. The value follows the Kindly contract:
+
+- `:kindly/kind` and `:kindly/options` are value metadata;
+- scalar values are wrapped in a one-element vector with
+  `:kindly/options {:wrapped-value true}`;
+- fragments compose `:kind/table`, `:kind/code`, and `:kind/println` values;
+- viewer layout hints are namespaced under `:otel.viewer/*`.
+
+The current adviser lives in `demo.samizdat-kindly`; a real Samizdat
+instrumentation package should export the equivalent pure function or inert
+advice data. chDB rows and `/api/traces/<id>` stay raw. Other libraries can add
+their own advisers without adding their vocabulary to `jolt-otel-viewer`.

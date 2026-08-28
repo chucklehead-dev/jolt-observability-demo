@@ -66,15 +66,16 @@ instead of treating progressive enhancement as the only application.
   DB and HTTP spans replace the handwritten equivalents; see
   [instrumented-build-spike.md](instrumented-build-spike.md).
 
-## Agent/model privacy pair
+## Agent/model privacy and controller story
 
-An optional live storyboard calls an OpenAI-compatible Lemonade server twice
-with the same overqualified-maintenance-android task. The first trace retains
-only model, latency, finish reason, token usage, and control-loop structure. The
-second additionally stores the bounded assistant response after common
-delimited thinking output is stripped. Prompts, system instructions, physical
-model hostnames, credentials, and tool arguments remain absent in both modes;
-provider thinking is disabled by default.
+An optional live storyboard calls an OpenAI-compatible Lemonade server. The
+first trace retains only model, latency, finish reason, token usage, and
+control-loop structure. The second explicitly stores both the bounded prompt
+and assistant response after common delimited thinking output is stripped. The
+third runs two model turns: a controller rejects an evocative but mechanically
+vague answer, supplies a concrete live-stream diagnosis, and the agent revises
+its response. Physical model hostnames, credentials, and tool arguments remain
+absent in every mode; provider thinking is disabled by default.
 
 Run it with an endpoint reachable from the demo process and a neutral telemetry
 display address so private hostnames never enter checked-in screenshots:
@@ -88,7 +89,9 @@ JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:agent-screenshots
 
 ![Agent trace without response content](screenshots/05-agent-metadata-only.png)
 
-![Agent trace with bounded sanitized response](screenshots/06-agent-with-response.png)
+![Agent trace with bounded prompt and response](screenshots/06-agent-with-response.png)
+
+![Two-turn trace with controller intervention](screenshots/07-agent-controller-intervention.png)
 
 The checked-in animated tour is generated against a deterministic local model
 fixture, so it contains no private endpoint or machine identity:
@@ -99,5 +102,8 @@ npm run docs:agent-gif
 
 The recorder uses the pinned Playwright dependency and requires `ffmpeg` on
 `PATH` for the final WebM-to-GIF conversion.
+
+The animation opens the two-turn trace, finds the controller intervention, and
+then inspects the revised generation's captured prompt and response.
 
 ![Navigating the complete agent trace](screenshots/agent-trace-tour.gif)

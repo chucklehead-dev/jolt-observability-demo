@@ -48,7 +48,7 @@ module.exports = defineConfig({
       name: "agent-docs",
       testMatch: /agent-storyboard\.screenshots\.spec\.js/,
       outputDir: "docs/screenshots/test-artifacts",
-      use: {...devices["Desktop Chrome"], viewport: {width: 1440, height: 1200}},
+      use: {...devices["Desktop Chrome"], viewport: {width: 1440, height: 1400}},
     },
   ],
 });

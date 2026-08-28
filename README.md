@@ -35,10 +35,19 @@ JOLT_CHDB_LIB=/path/to/libchdb.so jolt -m demo.main
 ```
 
 **Run model (metadata only)** records the run/branch/turn/generation/HTTP/tool
-hierarchy and usage. **Run model (show response)** additionally records one
-bounded assistant response after stripping common delimited thinking output.
-Neither mode records the prompt, system instructions, credentials, or tool
-arguments; thinking is disabled by default.
+hierarchy and usage without content. **Run model (show exchange)** explicitly
+records the bounded prompt and assistant response after stripping common
+delimited thinking output. **Run multi-turn intervention** records the first
+answer, a controller revision, and a second model turn in one parent-linked
+trace. Credentials and tool arguments are never recorded; thinking is disabled
+by default.
+
+Samizdat presentation policy lives beside its instrumentation vocabulary in
+`demo.samizdat-kindly`. It annotates values with Kindly's standard
+[`:kindly/kind` and `:kindly/options` value metadata](https://scicloj.github.io/kindly-noted/kindly/);
+the reusable viewer
+only understands generic Kindly values plus a small namespaced set of layout
+hints. Raw stored telemetry and JSON APIs remain presentation-free.
 
 Configuration is optional:
 
@@ -54,6 +63,8 @@ Configuration is optional:
   intentionally testing provider thinking behavior.
 
 ![Navigating a complete agent trace](docs/screenshots/agent-trace-tour.gif)
+
+![Controller intervention and revised turn](docs/screenshots/07-agent-controller-intervention.png)
 
 For persistent data, prefer a map dbspec from an embedding application. The
 standalone demo also accepts a `chdb:` URI through `DEMO_CHDB_SPEC`; the demo

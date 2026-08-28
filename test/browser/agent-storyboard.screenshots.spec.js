@@ -12,8 +12,8 @@ async function openNewestTrace(page) {
   return dialog;
 }
 
-async function openGeneration(dialog) {
-  const generation = dialog.locator(".otel-spans > li:has(.otel-role-generation)").first();
+async function openGeneration(dialog, index = 0) {
+  const generation = dialog.locator(".otel-spans > li:has(.otel-role-generation)").nth(index);
   await expect(generation).toContainText("chat");
   await generation.locator("summary").click();
   const root = dialog.locator(".otel-spans > li").first().locator("details");
@@ -24,7 +24,7 @@ async function openGeneration(dialog) {
   return generation;
 }
 
-test("capture metadata-only and sanitized-response agent traces", async ({page}) => {
+test("capture private, explicit-exchange, and controller-intervention traces", async ({page}) => {
   const streamResponse = page.waitForResponse((response) =>
     response.url().includes("datastar-sse=true") && response.status() === 200);
   await page.goto("/");
@@ -38,17 +38,19 @@ test("capture metadata-only and sanitized-response agent traces", async ({page})
   let dialog = await openNewestTrace(page);
   let generation = await openGeneration(dialog);
   await expect(generation).toContainText("Content not recorded (privacy default)");
-  await expect(generation).not.toContainText("Sanitized response");
+  await expect(generation).not.toContainText("Captured prompt");
+  await expect(generation).not.toContainText("Captured response");
   await dialog.screenshot({path: path.join("docs", "screenshots",
                                            "05-agent-metadata-only.png")});
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", {name: "Run model (show response)"}).click();
+  await page.getByRole("button", {name: "Run model (show exchange)"}).click();
   await expect(traces).toHaveCount(before + 2, {timeout: 90_000});
   dialog = await openNewestTrace(page);
   generation = await openGeneration(dialog);
-  await expect(generation.locator(".otel-response")).toBeVisible();
-  await expect(generation).toContainText("Sanitized response");
+  await expect(generation).toContainText("Captured prompt");
+  await expect(generation).toContainText("brain the size of a planet");
+  await expect(generation).toContainText("Captured response");
   await expect(generation).not.toContainText("Content not recorded");
 
   const html = await page.content();
@@ -58,4 +60,24 @@ test("capture metadata-only and sanitized-response agent traces", async ({page})
   }
   await dialog.screenshot({path: path.join("docs", "screenshots",
                                            "06-agent-with-response.png")});
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", {name: "Run multi-turn intervention"}).click();
+  await expect(traces).toHaveCount(before + 3, {timeout: 90_000});
+  dialog = await openNewestTrace(page);
+  await expect(dialog.locator(".otel-role-turn")).toHaveCount(2);
+  const intervention = dialog.locator(".otel-spans > li:has(.otel-role-intervention)");
+  await expect(intervention).toContainText("answer lacked a concrete telemetry mechanism");
+  await expect(intervention.locator("details")).toHaveAttribute("open", "");
+  generation = await openGeneration(dialog, 1);
+  await expect(generation).toContainText("Captured prompt");
+  await expect(generation).toContainText("Controller intervention:");
+  await expect(generation).toContainText("Captured response");
+  await expect(generation).toContainText("square root of -1");
+  await generation.scrollIntoViewIfNeeded();
+  await dialog.evaluate((element) => {
+    element.scrollTop = Math.max(0, element.scrollTop - 220);
+  });
+  await dialog.screenshot({path: path.join("docs", "screenshots",
+                                           "07-agent-controller-intervention.png")});
 });

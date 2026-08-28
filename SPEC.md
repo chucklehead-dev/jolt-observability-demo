@@ -43,10 +43,14 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - `POST /agent-work` and `POST /agent-work-with-response` run one
   Lemonade-backed, Samizdat-shaped control-loop turn. Both record a root run,
   control loop, branch, turn, logical generation, physical HTTP attempt, and
-  tool span. The first is metadata-only; the second additionally records one
-  bounded response after common delimited thinking output is stripped. Neither
-  records prompts, system instructions, physical model hostnames, credentials,
-  or tool arguments; provider thinking is disabled by default.
+  tool span. The first is metadata-only; the second explicitly records a
+  bounded prompt and response after common delimited thinking output is
+  stripped.
+- `POST /agent-work-intervention` runs two model turns and records a controller
+  intervention between them. The second generation prompt includes the first
+  response and bounded controller revision, making the control-loop decision
+  inspectable. Explicit capture never includes physical model hostnames,
+  credentials, or tool arguments; provider thinking is disabled by default.
 - `POST /v1/traces` accepts OTLP/HTTP JSON traces through the host-agnostic
   `otel.otlp.http-receiver`. The demo parser measures actual UTF-8 encoded bytes,
   limits bodies to 1 MiB, rejects compression, and admits one parse/export at a
@@ -79,6 +83,10 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
 - Viewer HTML, assets, JSON APIs, trace detail, and SSE snapshot rendering are
   excluded from instrumentation so observing telemetry cannot recursively
   generate more viewer telemetry.
+- Samizdat-specific rendering advice is attached only to the trace tree passed
+  to HTML rendering. It follows Kindly value metadata (`:kindly/kind`,
+  `:kindly/options`, including scalar `:wrapped-value`) and never changes the
+  chDB rows or JSON trace-detail representation.
 - `/v1/traces` is marked by the receiver suppression wrapper before HTTP
   instrumentation inspects the request. Receiver parsing, export responses, and
   subsequent viewer reads therefore cannot create an ingest feedback loop.
@@ -124,10 +132,12 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   console/page errors, verifies the dialog without navigation, and separately
   runs the zero-JavaScript POST/303/detail/back path. The documentation capture
   reuses the same semantic story.
-- An optional live-model Playwright project calls both agent routes, verifies
-  the control-loop hierarchy and privacy state, captures the paired docs
-  screenshots, and rejects the configured physical model hostname anywhere in
-  rendered HTML. Its telemetry address is an explicit neutral override.
+- An optional live-model Playwright project calls all three agent routes,
+  verifies the one- and two-turn control-loop hierarchy and privacy state,
+  captures docs screenshots, and rejects the configured physical model
+  hostname anywhere in rendered HTML. Its telemetry address is an explicit
+  neutral override. The checked-in GIF runs the same story against a local
+  deterministic model fixture.
 
 ## Adoption boundaries
 
