@@ -193,8 +193,9 @@ machine.
 
 ## Plotje, Hiccup, and the oscope slice
 
-Open `/plotje-editor` for the bounded Plotje/grammar-of-graphics editor and
-`/hiccup-editor` for the safe Hiccup widget editor. Both are server-rendered
+Open `/oscope/edit/plotje` for the bounded Plotje/grammar-of-graphics editor and
+`/oscope/edit/hiccup` for the safe Hiccup widget editor. Both are supplied by
+the same mountable oscope visualization-document boundary, server-rendered
 forms first; a small same-origin script progressively replaces only the preview
 and is covered by CSP/no-JavaScript browser tests. The portable Plotje backend
 renders line, point, and categorical bar charts to SVG on Jolt, including

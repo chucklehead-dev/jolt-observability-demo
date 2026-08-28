@@ -60,13 +60,13 @@ done
 
 curl --noproxy '*' -fsS "http://127.0.0.1:$demo_port/workbench" \
   | grep -q "Real Samizdat run"
-curl --noproxy '*' -fsS "http://127.0.0.1:$demo_port/plotje-editor" \
+curl --noproxy '*' -fsS "http://127.0.0.1:$demo_port/oscope/edit/plotje" \
   | grep -q "Plotje editor"
-curl --noproxy '*' -fsS "http://127.0.0.1:$demo_port/hiccup-editor" \
+curl --noproxy '*' -fsS "http://127.0.0.1:$demo_port/oscope/edit/hiccup" \
   | grep -q "Safe Hiccup editor"
 curl --noproxy '*' -fsS -X POST \
   --data-urlencode 'spec={:data [{:service "api" :count 2}] :layers [{:mark :bar :x :service :y :count}]}' \
-  "http://127.0.0.1:$demo_port/plotje-editor/preview" \
+  "http://127.0.0.1:$demo_port/oscope/edit/plotje/preview" \
   | grep -q '<svg'
 
 test -s "$repo/target/samizdat-aspects.edn"

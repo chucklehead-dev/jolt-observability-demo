@@ -19,7 +19,7 @@ test("Plotje and Hiccup previews update progressively without tracing the editor
   const assertNoBrowserErrors = guardBrowserErrors(page);
   const before = await traceCount(request);
 
-  await page.goto("/plotje-editor");
+  await page.goto("/oscope/edit/plotje");
   await expect(page.getByRole("heading", {name: "Plotje editor"})).toBeVisible();
   const plotjePreview = page.locator("#plotje-preview");
   await expect(plotjePreview.locator("svg")).toBeVisible();
@@ -32,7 +32,7 @@ test("Plotje and Hiccup previews update progressively without tracing the editor
   await plotjeSpec.fill("{:title \"API queue\" :data [{:service \"api\" :count 3}] :layers [{:mark :bar :x :service :y :count}]}");
   await expect(plotjePreview).toContainText("API queue");
 
-  await page.goto("/hiccup-editor");
+  await page.goto("/oscope/edit/hiccup");
   await expect(page.getByRole("heading", {name: "Safe Hiccup editor"})).toBeVisible();
   const hiccupPreview = page.locator("#hiccup-preview");
   const hiccupSpec = page.getByLabel("Hiccup value");
@@ -50,18 +50,18 @@ test("both editors retain a semantic form fallback without JavaScript", async ({
   const context = await browser.newContext({javaScriptEnabled: false});
   const page = await context.newPage();
   try {
-    await page.goto(`${baseURL}/plotje-editor`);
+    await page.goto(`${baseURL}/oscope/edit/plotje`);
     await page.getByLabel("Chart specification").fill(
       "{:title \"Scheduler queue\" :data [{:service \"scheduler\" :count 4}] :layers [{:mark :bar :x :service :y :count}]}",
     );
     await page.getByRole("button", {name: "Render"}).click();
-    await expect(page).toHaveURL(`${baseURL}/plotje-editor`);
+    await expect(page).toHaveURL(`${baseURL}/oscope/edit/plotje`);
     await expect(page.locator("#plotje-preview")).toContainText("Scheduler queue");
 
-    await page.goto(`${baseURL}/hiccup-editor`);
+    await page.goto(`${baseURL}/oscope/edit/hiccup`);
     await page.getByLabel("Hiccup value").fill("[:p \"Rendered by the server\"]");
     await page.getByRole("button", {name: "Render"}).click();
-    await expect(page).toHaveURL(`${baseURL}/hiccup-editor`);
+    await expect(page).toHaveURL(`${baseURL}/oscope/edit/hiccup`);
     await expect(page.locator("#hiccup-preview")).toContainText("Rendered by the server");
   } finally {
     await context.close();

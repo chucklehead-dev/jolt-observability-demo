@@ -12,7 +12,13 @@
                    :query-string "signal=logs&field=severity-text&window=6h&limit=5"})]
     (is (= 200 (:status response)))
     (is (str/includes? (:body response) "Severity Text in Logs"))
+    (is (str/includes? (:body response) "/oscope/edit/plotje"))
     (is (str/includes? (:body response) "Raw export is unavailable in sample mode"))
+    (is (= 200 (:status ((demo/raw-handler app)
+                         {:request-method :get
+                          :uri "/oscope/edit/plotje"
+                          :query-string
+                          "signal=logs&field=severity-text&window=6h&limit=5"}))))
     (is (= 404 (:status ((demo/raw-handler app)
                          {:request-method :get :uri "/oscope/export"}))))
     (is (= "/oscope" (demo/route-for "/oscope")))
@@ -34,8 +40,13 @@
     (is (= 404 (:status (h {:request-method :get
                             :uri "/admin/telemetry/export"}))))
     (is (= 404 (:status (h {:request-method :get :uri "/oscope"}))))
+    (is (= 200 (:status (h {:request-method :get
+                            :uri "/admin/telemetry/edit/plotje"}))))
     (is (= ["/admin/telemetry" "/admin/telemetry/export"] @seen))
     (is (= "/admin/telemetry"
            (demo/route-for "/admin/telemetry" "/admin/telemetry")))
     (is (= "/admin/telemetry/export"
-           (demo/route-for "/admin/telemetry/export" "/admin/telemetry")))))
+           (demo/route-for "/admin/telemetry/export" "/admin/telemetry")))
+    (is (= "/admin/telemetry/edit/plotje"
+           (demo/route-for "/admin/telemetry/edit/plotje"
+                           "/admin/telemetry")))))

@@ -4,7 +4,6 @@
             [demo.main-test]
             [demo.oscope-web-test]
             [demo.plotje-portable-test]
-            [demo.portable-editors-test]
             [demo.property-test :as property]
             [demo.samizdat-adapter-test]
             [demo.samizdat-aspect-provider-test]
@@ -16,7 +15,6 @@
                                'demo.oscope-web-test
                                'demo.aspect-journal-test
                                'demo.plotje-portable-test
-                               'demo.portable-editors-test
                                'demo.samizdat-adapter-test
                                'demo.samizdat-aspect-provider-test
                                'demo.samizdat-journal-provider-test

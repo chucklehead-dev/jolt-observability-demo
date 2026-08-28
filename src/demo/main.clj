@@ -4,8 +4,6 @@
             [db.jdbc]
             [demo.datastar :as demo-datastar]
             [demo.otlp :as demo-otlp]
-            [demo.plotje-portable-editor :as plotje-editor]
-            [demo.safe-hiccup-editor :as hiccup-editor]
             [demo.samizdat-kindly :as samizdat-kindly]
             [demo.workbench :as workbench]
             [demo.workbench-fixture :as workbench-fixture]
@@ -25,6 +23,7 @@
             [otel.viewer :as viewer]
             [oscope.live :as oscope]
             [oscope.sample :as oscope-sample]
+            [oscope.ui.visualization-editor :as visualization-editor]
             [oscope.ui.web :as oscope-web])
   (:import [java.net URLDecoder]))
 
@@ -323,9 +322,8 @@
   (context/with-instrumentation-suppressed
     (context/bind-fn f)))
 
-(def ^:private editor-paths
-  #{"/plotje-editor" "/plotje-editor/preview" "/assets/plotje-editor.js"
-    "/hiccup-editor" "/hiccup-editor/preview" "/assets/hiccup-editor.js"})
+(defn- oscope-editor-path [oscope-path]
+  (if (= "/" oscope-path) "/edit" (str oscope-path "/edit")))
 
 (defn route-for
   ([path] (route-for path oscope-web/default-path))
@@ -338,7 +336,8 @@
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
         (= path "/assets/workbench.js") "/assets/workbench.js"
         (oscope-web/handled-path? oscope-path path) path
-        (contains? editor-paths path) path
+        (visualization-editor/handled-path? (oscope-editor-path oscope-path) path)
+        path
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/workbench") "/workbench"
         (= path "/work") "/work"
@@ -640,21 +639,34 @@
            summary-fn traces-fn filtered-traces-fn trace-filter-options-fn
            now-nanos-fn trace-fn logs-fn work-fn agent-work-fn
            agent-intervention-work-fn otlp-handler
-           oscope-source oscope-handler oscope-path
+           oscope-source oscope-handler oscope-path oscope-editor-handler
            lemonade-base-url lemonade-model lemonade-telemetry-address
            lemonade-disable-thinking? workbench-state workbench-adapter
            workbench-kind]
     :or {port 8080}}]
   (let [now-nanos-fn (or now-nanos-fn #(* (System/currentTimeMillis) 1000000))
         oscope-path (or oscope-path oscope-web/default-path)
+        editor-path (oscope-editor-path oscope-path)
+        oscope-source
+        (or oscope-source
+            {:load-command (fn [_ selection]
+                             (oscope-sample/screen-for-selection selection))})
+        oscope-editor-handler
+        (or oscope-editor-handler
+            (visualization-editor/handler
+             oscope-source
+             {:path editor-path
+              :viewer-path oscope-path
+              :run-suppressed
+              (fn [thunk]
+                (context/with-instrumentation-suppressed (thunk)))}))
         oscope-handler
         (or oscope-handler
-            (if oscope-source
-              (oscope-web/handler oscope-source {:path oscope-path})
-              (oscope-web/handler
-               {:load-command (fn [_ selection]
-                                (oscope-sample/screen-for-selection selection))}
-               {:path oscope-path})))
+            (oscope-web/handler
+             oscope-source
+             {:path oscope-path
+              :visualization-editor-path
+              (visualization-editor/plotje-path editor-path)}))
         configured-lemonade-url
         (or lemonade-base-url (System/getenv "DEMO_LEMONADE_BASE_URL"))
         traces-fn (or traces-fn #(query-traces connection))
@@ -692,6 +704,8 @@
          :oscope-source oscope-source
          :oscope-handler oscope-handler
          :oscope-path oscope-path
+         :oscope-editor-handler oscope-editor-handler
+         :oscope-editor-path editor-path
          :work-fn (or work-fn real-work!)
          :agent-work-fn (or agent-work-fn agent-work!)
          :agent-intervention-work-fn
@@ -723,13 +737,13 @@
                            trace-filter-options-fn now-nanos-fn trace-fn logs-fn
                            work-fn agent-work-fn agent-intervention-work-fn
                            logger stream-state otlp-handler oscope-handler
-                           oscope-path]
+                           oscope-path oscope-editor-handler oscope-editor-path]
                     :as app}]
   (fn [{:keys [request-method uri query-string] :as request}]
     (cond
-      (contains? editor-paths uri)
-      (or (plotje-editor/handler request)
-          (hiccup-editor/handler request))
+      (and oscope-editor-handler
+           (visualization-editor/handled-path? oscope-editor-path uri))
+      (oscope-editor-handler request)
 
       (oscope-web/handled-path? oscope-path uri)
       (oscope-handler request)
@@ -865,7 +879,9 @@
         (= route "/workbench")
         (= route "/assets/workbench.js")
         (oscope-web/handled-path? (:oscope-path app) route)
-        (contains? editor-paths route)
+        (and (:oscope-editor-path app)
+             (visualization-editor/handled-path?
+              (:oscope-editor-path app) route))
         (contains? #{"/agent-work"
                      "/agent-work-with-response"
                      "/agent-work-intervention"} route)

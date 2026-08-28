@@ -1,7 +1,7 @@
 (ns demo.plotje-editor
   "JVM oracle adapter from the normalized bounded chart spec to upstream Plotje.
 
-  The runnable Jolt Ring editor lives in `demo.plotje-portable-editor`. This
+  The runnable Jolt Ring editor lives in `oscope.ui.visualization-editor`. This
   namespace deliberately owns no parser, HTTP surface, or mutable state: the
   shared bounded spec is validated before it reaches either renderer, and this
   adapter answers only whether upstream Plotje can render that same value."

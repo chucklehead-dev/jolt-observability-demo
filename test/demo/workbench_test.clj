@@ -301,10 +301,10 @@
             asset (http-client/get (str base "/assets/workbench.js")
                                    {:conn-timeout 2000 :socket-timeout 5000
                                     :throw-exceptions false})
-            plotje (http-client/get (str base "/plotje-editor")
+            plotje (http-client/get (str base "/oscope/edit/plotje")
                                     {:conn-timeout 2000 :socket-timeout 5000
                                      :throw-exceptions false})
-            hiccup (http-client/get (str base "/hiccup-editor")
+            hiccup (http-client/get (str base "/oscope/edit/hiccup")
                                     {:conn-timeout 2000 :socket-timeout 5000
                                      :throw-exceptions false})]
         (is (= 200 (:status page)))
