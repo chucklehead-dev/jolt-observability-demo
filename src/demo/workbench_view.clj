@@ -81,7 +81,9 @@
                 "<pre>" (escape-html (bounded (:response run)
                                               max-response-display))
                 "</pre></div>"
-                (capture-rows (:capture run)))
+                (capture-rows (:capture run))
+                "<p><a class=\"otel-back-link\" href=\"/workbench?new-run=true#workbench-prompt\">"
+                "Run another prompt</a></p>")
            "<p class=\"otel-content-note\">Run in progress…</p>"))
     "<p class=\"otel-empty\">No run yet. Enter a prompt above to start one.</p>"))
 
@@ -156,14 +158,20 @@
   "Repair the SSE reconnect race without replaying delivered rows.")
 
 (defn- prompt-form [adapter-kind current]
-  (str "<form method=\"post\" action=\"/workbench\" class=\"workbench-form\">"
+  (let [finished? (contains? #{:closed :failed} (:status current))]
+    (str "<form method=\"post\" action=\"/workbench\" class=\"workbench-form\">"
        "<label for=\"workbench-prompt\">Prompt</label>"
        "<textarea id=\"workbench-prompt\" name=\"prompt\" maxlength=\""
-       max-prompt-input "\" required>"
+       max-prompt-input "\" placeholder=\"Enter a coding task\" required>"
        (escape-html
-         (bounded (or (:prompt current) default-prompt) max-prompt-input))
+         (bounded (cond finished? ""
+                        current (:prompt current)
+                        :else default-prompt)
+                  max-prompt-input))
        "</textarea>"
-       "<button type=\"submit\">Run</button>"
+       "<button type=\"submit\">"
+       (if finished? "Run another prompt" "Run")
+       "</button>"
        "</form>"
        "<p class=\"otel-content-note\">"
        (case adapter-kind
@@ -177,7 +185,7 @@
          (str "Offline fixture mode: this replays one fixed SSE reconnect "
               "coding scenario and uses your prompt only as the run label. "
               "Run the Samizdat entrypoint to execute submitted prompts."))
-       "</p>"))
+       "</p>")))
 
 (defn render-page
   "The complete standalone /workbench document. `state-value` is the plain map

@@ -25,6 +25,10 @@ test -s "$repo/target/samizdat-aspects.edn"
 grep -q ':http-client.core/request' "$repo/target/samizdat-aspects.edn"
 grep -q ':http/server-ring-handler' "$repo/target/samizdat-aspects.edn"
 grep -q ':http/server-sanitized-response' "$repo/target/samizdat-aspects.edn"
+grep -q ':provider demo.samizdat-journal-provider/aspect-provider' \
+  "$repo/target/samizdat-aspects.edn"
+grep -q ':provider demo.samizdat-aspect-provider/aspect-provider' \
+  "$repo/target/samizdat-aspects.edn"
 mkdir -p "$scratch/project"
 cp -R "$repo/test/fixtures/samizdat-coding-project/." "$scratch/project/"
 
@@ -71,7 +75,7 @@ if ! env DEMO_SAMIZDAT_BASE_URL="http://127.0.0.1:$demo_port" \
   exit 1
 fi
 
-if grep -q 'ThreadStatus: current_thread contains invalid address' "$scratch/demo.log"; then
+if grep -Eq 'ThreadStatus: current_thread contains invalid address|Exception in mutex-release|thread does not own mutex|Unhandled exception' "$scratch/demo.log"; then
   tail -160 "$scratch/demo.log"
   exit 1
 fi

@@ -1044,10 +1044,11 @@
   (when-let [f (:stop! lifecycle)] (f)))
 
 (defn -main [& _]
+  ;; Mask SIGINT before the server creates its reactor workers. They inherit the
+  ;; mask, while park-until-interrupt unmasks only this primordial thread. This
+  ;; keeps Ctrl+C from interrupting a worker inside a collect-safe socket poll.
+  (jolt.host/block-sigint)
   (let [lifecycle (start!)]
     (println (str "Jolt observability demo listening on http://127.0.0.1:" (:port lifecycle)))
-    (try
-      @(promise)
-      (finally
-        (stop! lifecycle)
-        (System/exit 0)))))
+    (jolt.host/add-shutdown-hook #(stop! lifecycle))
+    (jolt.host/park-until-interrupt)))

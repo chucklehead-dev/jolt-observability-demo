@@ -36,7 +36,7 @@ until curl --noproxy '*' -fsS "http://127.0.0.1:$model_port/health" >/dev/null 2
   sleep 0.1
 done
 
-env DEMO_PORT=$demo_port \
+env --default-signal=INT DEMO_PORT=$demo_port \
   DEMO_SAMIZDAT_ROOT="$scratch/project" \
   DEMO_SAMIZDAT_DB="$scratch/samizdat.sqlite3" \
   DEMO_CHDB_SPEC=chdb::memory: \
@@ -72,8 +72,39 @@ curl --noproxy '*' -fsS -X POST \
 test -s "$repo/target/samizdat-aspects.edn"
 grep -q ':samizdat.embed/beam-run' "$repo/target/samizdat-aspects.edn"
 grep -q ':samizdat.agent.infer/model' "$repo/target/samizdat-aspects.edn"
+grep -q ':provider demo.samizdat-journal-provider/aspect-provider' \
+  "$repo/target/samizdat-aspects.edn"
+grep -q ':provider demo.samizdat-aspect-provider/aspect-provider' \
+  "$repo/target/samizdat-aspects.edn"
 grep -q ':http-client.core/request' "$repo/target/samizdat-aspects.edn"
 grep -q ':http/server-ring-handler' "$repo/target/samizdat-aspects.edn"
 grep -q ':http/server-sanitized-response' "$repo/target/samizdat-aspects.edn"
 
-echo "PASS: woven standalone Samizdat viewer and editors"
+kill -INT "$demo_pid"
+i=0
+while kill -0 "$demo_pid" 2>/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -ge 100 ]; then
+    tail -120 "$scratch/demo.log"
+    echo "FAIL: demo did not stop within 10 seconds of SIGINT" >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+set +e
+wait "$demo_pid"
+demo_status=$?
+set -e
+demo_pid=
+if [ "$demo_status" -ne 0 ]; then
+  tail -120 "$scratch/demo.log"
+  echo "FAIL: demo exited $demo_status after SIGINT" >&2
+  exit 1
+fi
+if grep -Eq 'ThreadStatus: current_thread contains invalid address|Exception in mutex-release|thread does not own mutex|Unhandled exception' "$scratch/demo.log"; then
+  tail -120 "$scratch/demo.log"
+  echo "FAIL: demo emitted a native-thread shutdown diagnostic" >&2
+  exit 1
+fi
+
+echo "PASS: woven standalone Samizdat viewer, editors, and SIGINT shutdown"

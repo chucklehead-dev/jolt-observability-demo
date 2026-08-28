@@ -17,7 +17,7 @@
          :git/sha "594b280c460155a9e5f11da9deb7784fb1f3a670"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
-         :git/sha "9b4db4a4ae15d6fdb7b07e7fda1f0eed9db11a21"}
+         :git/sha "b1dbfb4621a57efa8bce0b7de3f9cd0db52a4c64"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
          :git/sha "52e3d32765b1f62ca13ced6d237d57f427771d25"}

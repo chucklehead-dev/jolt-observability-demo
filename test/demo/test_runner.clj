@@ -8,6 +8,7 @@
             [demo.property-test :as property]
             [demo.samizdat-adapter-test]
             [demo.samizdat-aspect-provider-test]
+            [demo.samizdat-journal-provider-test]
             [demo.workbench-test]))
 
 (defn -main [& _]
@@ -18,6 +19,7 @@
                                'demo.portable-editors-test
                                'demo.samizdat-adapter-test
                                'demo.samizdat-aspect-provider-test
+                               'demo.samizdat-journal-provider-test
                                'demo.workbench-test)
         properties (property/run-properties!)
         _ (doseq [{:keys [label result]} properties]

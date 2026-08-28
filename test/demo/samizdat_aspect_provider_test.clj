@@ -5,6 +5,7 @@
             [clojure.test :refer [deftest is]]
             [demo.aspect-journal :as journal]
             [demo.samizdat-aspect-provider :as provider]
+            [demo.samizdat-journal-provider :as journal-provider]
             [otel.exporter.memory :as memory]
             [otel.instrumentation.http-client :as generic-http]
             [otel.propagation :as propagation]
@@ -16,6 +17,11 @@
    :advice-role role
    :library {:id 'yogthos/samizdat :version provider/samizdat-build-id}})
 
+(defn- observed-around [join-point evaluated-args proceed]
+  (journal-provider/around
+    join-point evaluated-args
+    (fn [] (provider/around join-point evaluated-args proceed))))
+
 (defn- with-memory-sdk [f]
   (let [exporter (memory/exporter)
         handle (sdk/init! {:service-name "samizdat-aspect-test"
@@ -26,7 +32,7 @@
       (f exporter)
       (finally (sdk/shutdown! handle)))))
 
-(deftest nested-operations-share-otel-and-journal-parentage
+(deftest independent-consumers-share-otel-and-journal-parentage
   (with-memory-sdk
     (fn [exporter]
       (let [j (journal/journal 32)
@@ -34,17 +40,17 @@
             turn-jp (join-point :samizdat/turn :samizdat.agent.beam/turn)
             model-jp (join-point :samizdat/model :samizdat.agent.infer/model)
             result (binding [journal/*journal* j]
-                     (provider/around
+                     (observed-around
                        run-jp
                        [{:problem "never persist this prompt"
                          :llm-config {:provider :openai
                                       :model "test-model"
                                       :api-key "never persist this key"}}]
                        (fn []
-                         (provider/around
+                         (observed-around
                            turn-jp [{:run-id "run-1"} {:id "branch-1"} 2]
                            (fn []
-                             (provider/around
+                             (observed-around
                                model-jp
                                [:adapter {:provider :openai :model "test-model"}
                                 [{:role "user" :content "secret prompt"}]
@@ -89,7 +95,7 @@
             failure (ex-info "secret response leaked in provider error" {:body "secret"})
             observed (try
                        (binding [journal/*journal* j]
-                         (provider/around
+                         (observed-around
                            (join-point :samizdat/model :samizdat.agent.infer/model)
                            [:adapter {:model "test-model"} [{:content "secret prompt"}] {}]
                            (fn [] (throw failure))))
@@ -112,12 +118,12 @@
             (binding [journal/*journal* j]
               (trace/with-span [_request tracer "request"]
                 @(future
-                   (provider/around
+                   (observed-around
                      (join-point :samizdat/run :samizdat.api.control/beam-run)
                      [{:llm-config {:provider :openai :model "test-model"}}]
                      (fn []
                        @(future
-                          (provider/around
+                          (observed-around
                             (join-point :samizdat/turn :samizdat.agent.beam/turn)
                             [{:run-id "run-future"} {:id "branch-future"} 1]
                             (fn [] {:id "branch-future" :status :active}))))))))
@@ -150,10 +156,34 @@
             serialized (pr-str span)]
         (is (= :evidence (:category result)))
         (is (= "read_file" (get attrs "gen_ai.tool.name")))
-        (is (= "not-captured" (get attrs "samizdat.tool.arguments_state")))
+        (is (= "omitted" (get attrs "samizdat.tool.arguments_state")))
+        (is (= "omitted" (get attrs "samizdat.tool.result_state")))
         (is (= true (get attrs "samizdat.tool.progress")))
         (doseq [secret ["/secret/project" "secret claim" "secret tool result"]]
           (is (not (.contains serialized secret))))))))
+
+(deftest tool-details-use-the-shared-bounded-content-policy
+  (with-memory-sdk
+    (fn [exporter]
+      (binding [provider/*content-policy*
+                (provider/content-policy
+                 {:capture? true :max-chars 64
+                  :redact #(str/replace % "/private/root" "[root]")})]
+        (provider/around
+         (join-point :samizdat/tool :samizdat.agent.loop/tool)
+         [{:run-id "run-tool" :turn 2 :tool-name "read_file"
+           :branch {:id "branch-tool"}
+           :args {:path "/private/root/src/calc.clj"}}]
+         (fn [] {:category :evidence :progress? true :timeout? false
+                 :result "contents from /private/root/src/calc.clj"})))
+      (let [attrs (:attributes (first (memory/spans exporter)))]
+        (is (= "captured" (get attrs "samizdat.tool.arguments_state")))
+        (is (= "captured" (get attrs "samizdat.tool.result_state")))
+        (is (.contains (get attrs "samizdat.tool.arguments_sanitized") "[root]"))
+        (is (.contains (get attrs "samizdat.tool.result_sanitized") "[root]"))
+        (is (<= (count (get attrs "samizdat.tool.arguments_sanitized")) 64))
+        (is (<= (count (get attrs "samizdat.tool.result_sanitized")) 64))
+        (is (= false (get attrs "samizdat.tool.timeout")))))))
 
 (deftest content-capture-is-explicit-sanitized-and-bounded
   (with-memory-sdk

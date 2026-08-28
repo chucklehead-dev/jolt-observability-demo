@@ -1,15 +1,14 @@
 (ns demo.samizdat-aspect-provider
-  "Composite Samizdat build-aspect consumer.
+  "OpenTelemetry Samizdat build-aspect consumer.
 
   The compiler supplies already-evaluated arguments through explicit aspect
   contracts. Observational roles use :args-v1; the HTTP role uses
   :replace-args-v1 to pass a copied request map with Trace Context. This
-  consumer creates duration spans and mirrors semantic nesting into
-  demo.aspect-journal. Prompt, response, tool arguments, exception messages,
-  endpoints, and hostnames are not inspected unless the application explicitly
-  binds a bounded content-capture policy."
+  consumer creates duration spans. Prompt, response, tool arguments, exception
+  messages, endpoints, and hostnames are not inspected unless the application
+  explicitly binds a bounded content-capture policy. The independent journal
+  consumer is selected separately by the build."
   (:require [clojure.string :as str]
-            [demo.aspect-journal :as journal]
             [otel.context :as context]
             [otel.propagation :as propagation]
             [otel.sdk :as sdk]
@@ -171,14 +170,20 @@
        [:samizdat.prompt.sanitized prompt]])))
 
 (defn- tool-attributes [[ctx]]
-  (present
-    [[:gen_ai.operation.name "execute_tool"]
-     [:gen_ai.tool.name (bounded-name (:tool-name ctx))]
-     [:samizdat.run.id (safe-id (:run-id ctx))]
-     [:samizdat.branch.id (safe-id (get-in ctx [:branch :id]))]
-     [:samizdat.turn.number (number-value (:turn ctx))]
-     [:samizdat.tool.arguments_state "not-captured"]
-     [:samizdat.tool.result_state "not-captured"]]))
+  (let [capture? (:capture? *content-policy*)
+        arguments (when capture? (captured (:args ctx)))]
+    (present
+      [[:gen_ai.operation.name "execute_tool"]
+       [:gen_ai.tool.name (bounded-name (:tool-name ctx))]
+       [:samizdat.run.id (safe-id (:run-id ctx))]
+       [:samizdat.branch.id (safe-id (get-in ctx [:branch :id]))]
+       [:samizdat.turn.number (number-value (:turn ctx))]
+       [:samizdat.tool.arguments_state
+        (cond (not capture?) "omitted" (nil? arguments) "redaction-failed"
+              :else "captured")]
+       [:samizdat.tool.arguments_sanitized arguments]
+       [:samizdat.tool.result_state
+        (if capture? "capture-requested" "omitted")]])))
 
 (defn- initial-attributes [role args]
   (case role
@@ -223,11 +228,18 @@
                 [:samizdat.response.sanitized response]]))
 
     :samizdat/tool
-    (present [[:samizdat.tool.category (bounded-name (:category result))]
-              [:samizdat.tool.progress (when (boolean? (:progress? result))
-                                         (:progress? result))]
-              [:samizdat.tool.timeout (when (boolean? (:timeout? result))
-                                        (:timeout? result))]])
+    (let [capture? (:capture? *content-policy*)
+          tool-result (when capture? (captured (:result result)))]
+      (present [[:samizdat.tool.category (bounded-name (:category result))]
+                [:samizdat.tool.progress (when (boolean? (:progress? result))
+                                           (:progress? result))]
+                [:samizdat.tool.timeout (when (boolean? (:timeout? result))
+                                          (:timeout? result))]
+                [:samizdat.tool.result_state
+                 (cond (not capture?) "omitted"
+                       (nil? tool-result) "redaction-failed"
+                       :else "captured")]
+                [:samizdat.tool.result_sanitized tool-result]]))
     {}))
 
 (defn- span-name [role]
@@ -262,10 +274,9 @@
         (trace/end! span)))))
 
 (defn around
-  "Apply both observational sinks around one synchronous Samizdat operation."
+  "Create one OpenTelemetry span around a synchronous Samizdat operation."
   [join-point evaluated-args proceed]
-  (journal/around join-point
-                  (fn [] (traced join-point evaluated-args proceed))))
+  (traced join-point evaluated-args proceed))
 
 (def ^:private trace-context-header-names
   #{"traceparent" "tracestate"})

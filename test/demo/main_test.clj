@@ -1043,6 +1043,32 @@
     (is (= true (get-in (meta prompt) [:kindly/options :wrapped-value])))
     (is (= ["bounded prompt"] prompt))))
 
+(deftest samizdat-tool-advice-renders-bounded-details-as-kindly-values
+  (let [advised
+        (samizdat-kindly/advise-trace
+         {:spanTree
+          [{:name "samizdat.tool"
+            :attributes
+            {"gen_ai.operation.name" "execute_tool"
+             "gen_ai.tool.name" "read_file"
+             "samizdat.turn.number" 2
+             "samizdat.tool.category" "evidence"
+             "samizdat.tool.progress" true
+             "samizdat.tool.timeout" false
+             "samizdat.tool.arguments_state" "captured"
+             "samizdat.tool.result_state" "captured"
+             "samizdat.tool.arguments_sanitized" "{:path \"src/calc.clj\"}"
+             "samizdat.tool.result_sanitized" "(defn square [x] (* x x))"}}]})
+        note (get-in advised [:spanTree 0 :kindly :value])
+        html (viewer/render-fragment {:trace advised})]
+    (is (= :kind/fragment (:kindly/kind (meta note))))
+    (is (= "Tool" (get-in (meta note) [:kindly/options :otel.viewer/role])))
+    (is (str/includes? html "read_file"))
+    (is (str/includes? html "Captured arguments"))
+    (is (str/includes? html "src/calc.clj"))
+    (is (str/includes? html "Captured result"))
+    (is (str/includes? html "defn square"))))
+
 (deftest live-otlp-parent-child-ingestion-without-feedback
   (let [port (+ 27050 (rand-int 900))
         lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})

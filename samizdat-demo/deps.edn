@@ -23,9 +23,11 @@
             {:resource "META-INF/jolt/aspects/http-server.edn"
              :provider otel.instrumentation.http-server}
             {:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
-             :provider demo.samizdat-aspect-provider}
+             :providers [demo.samizdat-journal-provider
+                         demo.samizdat-aspect-provider]}
             {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"
-             :provider demo.samizdat-aspect-provider}]
+             :providers [demo.samizdat-journal-provider
+                         demo.samizdat-aspect-provider]}]
   :aspect-report "../target/samizdat-aspects.edn"}
 
  :aliases {:test {:extra-paths ["../test"]}}

@@ -143,6 +143,18 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
     expect(ancestors(database, byId)
       .some((span) => span.name === "samizdat.run")).toBe(true);
   }
+  expect(databases.some((span) => {
+    const returned = span.attributes?.["db.response.returned_rows"];
+    return returned !== undefined && Number.isSafeInteger(Number(returned));
+  })).toBe(true);
+
+  // The adapter polls Samizdat's durable journal after the semantic work has
+  // completed. Those read-model queries are viewer plumbing, not new traces.
+  await page.waitForTimeout(1200);
+  const afterIdlePoll = await json(await request.get("/api/traces"));
+  expect(afterIdlePoll.filter((trace) =>
+    ["SELECT", "INSERT", "UPDATE", "DELETE"].includes(trace.rootSpan)))
+    .toHaveLength(0);
 
   const proof = await json(await request.get(`${modelFixtureUrl}/proof`));
   expect(proof.requests).toBeGreaterThan(0);
@@ -182,6 +194,12 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
   await expect(dialog).toContainText("samizdat.run");
   await expect(dialog).toContainText("samizdat.model");
   await expect(dialog).toContainText("SELECT");
+  const toolObservation = dialog.locator('.otel-observation[aria-label="Tool call"]').first();
+  const toolDetails = toolObservation.locator("xpath=ancestor::details[1]");
+  await toolDetails.locator(":scope > summary").click();
+  await expect(toolObservation).toBeVisible();
+  await expect(toolObservation)
+    .toContainText("Arguments and result not recorded (privacy default)");
 
   assertNoBrowserErrors();
 });

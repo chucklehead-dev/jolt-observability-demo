@@ -89,14 +89,14 @@ observability libraries are pinned to exact published fork SHAs; the only
 Build it, then launch it through the cwd-safe wrapper:
 
 ```sh
-JOLT_TOOLCHAIN=/absolute/path/to/jolt-with-chez-10.4.1
-JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt
+cd samizdat-demo
+env JOLT_BUILD_PROFILE=1 \
+  /absolute/path/to/jolt-with-chez-10.4.1 \
+  /absolute/path/to/aspect-enabled-jolt build \
+  -m demo.samizdat-main -o ../target/samizdat-observability-demo
+cd ..
 
-(cd samizdat-demo && \
-  "$JOLT_TOOLCHAIN" "$JOLT_ASPECT_BIN" build \
-    -m demo.samizdat-main -o ../target/samizdat-observability-demo)
-
-DEMO_SAMIZDAT_ROOT=/absolute/path/to/a/disposable/project \
+env DEMO_SAMIZDAT_ROOT=/absolute/path/to/a/disposable/project \
 DEMO_SAMIZDAT_DB=/absolute/path/to/samizdat.sqlite3 \
 DEMO_CHDB_SPEC='chdb:/absolute/path/to/telemetry' \
 JOLT_CHDB_LIB=/absolute/path/to/libchdb.so \
@@ -106,13 +106,20 @@ HARNESS_MODEL=local-model \
   scripts/run-samizdat-demo.sh
 ```
 
+The release build performs whole-program inference over the complete Samizdat
+closure and can take several minutes. `JOLT_BUILD_PROFILE=1` prints each build
+phase so active compilation is not mistaken for a hang; allow roughly twelve
+minutes for a cold gate on a constrained WSL instance.
+
 Open <http://127.0.0.1:8080/workbench>. The exact submitted prompt drives
 Samizdat. Durable run events stream into the page while compiler-selected
-aspects create parent-linked run, turn, model, tool, and outbound HTTP client
-spans. The HTTP advice injects its own W3C `traceparent` into the maintained
-`jolt.http-client` call through the compiler's explicit `:replace-args-v1`
-contract, without modifying that library. Launching from the
-target project is required for Samizdat's relative `eval` and file semantics;
+independent consumers create both the bounded event journal and parent-linked
+run, turn, model, tool, and outbound HTTP client spans. The compiler composes
+the journal outside the OTel consumer at each semantic join point; neither
+consumer depends on the other. The HTTP advice injects its own W3C
+`traceparent` into the maintained `jolt.http-client` call through the compiler's
+explicit `:replace-args-v1` contract, without modifying that library. Launching
+from the target project is required for Samizdat's relative `eval` and file semantics;
 `scripts/run-samizdat-demo.sh` enforces that invariant.
 
 Model content is absent from telemetry by default. Set

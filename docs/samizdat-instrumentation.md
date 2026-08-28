@@ -121,3 +121,9 @@ The current adviser lives in `demo.samizdat-kindly`; a real Samizdat
 instrumentation package should export the equivalent pure function or inert
 advice data. chDB rows and `/api/traces/<id>` stay raw. Other libraries can add
 their own advisers without adding their vocabulary to `jolt-otel-viewer`.
+
+Tool spans use the same contract. Their card always shows bounded semantic
+metadata (tool name, category, turn, progress, and timeout outcome). When the
+application explicitly enables content capture, the card also renders redacted,
+bounded argument and result summaries as `:kind/code`; otherwise it says that
+those values were not recorded.

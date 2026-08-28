@@ -8,10 +8,14 @@
             [clojure.string :as str]
             [demo.samizdat-aspect-provider :as aspect-provider]
             [demo.workbench-fixture :as workbench-fixture]
+            [otel.context :as context]
+            [otel.sdk :as sdk]
+            [otel.trace :as trace]
             [samizdat.embed :as embed]))
 
 (def ^:private journal-page-size 200)
 (def ^:private idle-poll-ms 1000)
+(def ^:private instrumentation-scope "io.github.casselc/jolt-observability-demo.samizdat-adapter")
 
 (defn- debug-failure! [error]
   (when (contains? #{"1" "true" "yes"}
@@ -67,12 +71,15 @@
 (defn- final-response [embedded run-id result redact]
   (redact
    (or (:answer result)
-       (get-in (embed/get-run embedded run-id) [:run :final_answer])
+       (get-in (context/with-instrumentation-suppressed
+                 (embed/get-run embedded run-id))
+               [:run :final_answer])
        (when (= :aborted (:status result)) "Run aborted.")
        "Samizdat finished without a final response.")))
 
 (defn- capture-summary [embedded run-id turn-count]
-  (let [run (:run (embed/get-run embedded run-id))]
+  (let [run (:run (context/with-instrumentation-suppressed
+                    (embed/get-run embedded run-id)))]
     {:model (or (:model run) "unknown")
      :turns turn-count
      :status (or (:status run) "unknown")
@@ -80,13 +87,23 @@
      :source "embedded Samizdat durable journal"}))
 
 (defn- drain-page! [embedded run-id cursor event!]
-  (let [{:keys [events next]} (embed/journal-tail embedded run-id cursor
-                                                   journal-page-size)]
+  (let [{:keys [events next]}
+        (context/with-instrumentation-suppressed
+          (embed/journal-tail embedded run-id cursor journal-page-size))]
     (doseq [event events] (event! (workbench-event event)))
     {:cursor next
      :events events
      :terminal (some terminal? events)
      :turns (count (filter #(= :turn (keyword (:kind %))) events))}))
+
+(defn- abort-run! [embedded handle parent]
+  (trace/with-span
+    [_ (sdk/tracer instrumentation-scope {:version "0.1.0"})
+     "samizdat.control abort"
+     {:kind :internal
+      :parent (or parent context/root)
+      :attributes {:samizdat.run.id (str (:run-id handle))}}]
+    (embed/abort! embedded handle)))
 
 (defn- watch-run! [embedded run-id run-future wakeups callbacks cancelled? redact]
   (loop [cursor 0
@@ -122,6 +139,7 @@
   (start-async! [_ prompt callbacks]
     (let [cancelled? (atom false)
           run-handle (atom nil)
+          run-context (atom nil)
           runner
           (binding [aspect-provider/*content-policy* content-policy]
             (future
@@ -133,10 +151,12 @@
                                        {:problem prompt
                                         :on-start
                                         (fn [run-id]
+                                          (reset! run-context (context/current))
                                           ((:started! callbacks) run-id
                                            {:source "embedded Samizdat"}))}))]
                     (reset! run-handle handle)
-                    (when @cancelled? (embed/abort! embedded handle))
+                    (when @cancelled?
+                      (abort-run! embedded handle @run-context))
                     (watch-run! embedded (:run-id handle) (:future handle)
                                 wakeups callbacks cancelled? display-redact))
                   (catch Throwable error
@@ -147,7 +167,7 @@
       {:abort! (fn []
                  (reset! cancelled? true)
                  (when-let [handle @run-handle]
-                   (embed/abort! embedded handle)))
+                   (abort-run! embedded handle @run-context)))
        :join! (fn [timeout-ms]
                 (not= ::join-timeout
                       (deref runner timeout-ms ::join-timeout)))})))

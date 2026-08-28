@@ -76,15 +76,19 @@
 (defn stop! [lifecycle]
   (demo/stop! lifecycle))
 
+(defn- stop-until-closed! [lifecycle]
+  (loop [attempt 1]
+    (let [result (stop! lifecycle)]
+      (when (and (= :closing (:status result)) (< attempt 12))
+        (Thread/sleep 250)
+        (recur (inc attempt))))))
+
 (defn -main [& _]
+  ;; Samizdat and the HTTP reactor both create workers. Mask SIGINT first so
+  ;; only the primordial thread parked below can receive the shutdown signal.
+  (jolt.host/block-sigint)
   (let [lifecycle (start!)]
     (println (str "Jolt observability + Samizdat workbench listening on "
                   "http://127.0.0.1:" (:port lifecycle)))
-    (try
-      @(promise)
-      (finally
-        (loop [attempt 1]
-          (let [result (stop! lifecycle)]
-            (when (and (= :closing (:status result)) (< attempt 12))
-              (Thread/sleep 250)
-              (recur (inc attempt)))))))))
+    (jolt.host/add-shutdown-hook #(stop-until-closed! lifecycle))
+    (jolt.host/park-until-interrupt)))

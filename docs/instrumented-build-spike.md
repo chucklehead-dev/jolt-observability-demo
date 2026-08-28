@@ -60,17 +60,26 @@ The embedded Samizdat demo uses the implemented application configuration:
 {:jolt/build
  {:aspects
   [{:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
-    :provider demo.samizdat-aspect-provider}
+    :providers [demo.samizdat-journal-provider
+                demo.samizdat-aspect-provider]}
    {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"
-    :provider demo.samizdat-aspect-provider}]
+    :providers [demo.samizdat-journal-provider
+                demo.samizdat-aspect-provider]}]
   :aspect-report "target/samizdat-aspects.edn"}}
 ```
 
 The manifests are published by the pinned Samizdat fork under
 `resources/META-INF/jolt/aspects/`; the demo no longer carries copies. Their
-compatibility id is the source revision whose entry and call-site surface they describe,
+compatibility id is the source revision whose entry and call-site surface they
+describe,
 while resource-only commits may advance independently. Samizdat itself has no
 OTel dependency.
+
+These are independent ordered consumers, not one hand-composed provider. The
+bounded journal is outermost and the OTel span is inner; the compiler owns that
+composition and records both providers on each logical join point. The journal
+provider's HTTP role is deliberately transparent, preserving the existing
+privacy boundary where only the specialized OTel consumer observes model HTTP.
 
 ## Weaver contract
 

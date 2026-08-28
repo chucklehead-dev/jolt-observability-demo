@@ -125,6 +125,23 @@ test("a /workbench run evolves live via SSE to a terminal response", async ({pag
   await expect(page.locator("#workbench-live .otel-content pre"))
     .toContainText("Last-Event-ID");
 
+  await expect(page.getByRole("link", {name: "Run another prompt"})).toBeVisible();
+  await Promise.all([
+    page.waitForURL(/\/workbench\?new-run=true#workbench-prompt$/),
+    page.getByRole("link", {name: "Run another prompt"}).click(),
+  ]);
+  await expect(page.getByLabel("Prompt")).toHaveValue("");
+  await page.getByLabel("Prompt").fill("add a bounded reconnect regression");
+  await page.getByRole("button", {name: "Run another prompt"}).click();
+  await page.waitForURL(/\/workbench$/);
+  await expect(page.locator("#workbench-live .workbench-prompt"))
+    .toHaveText("add a bounded reconnect regression");
+  await expect(page.locator("#workbench-live p", {hasText: "Status:"}))
+    .toContainText("closed", {timeout: 15000});
+  await expect(page.getByRole("heading", {name: "Previous runs"})).toBeVisible();
+  await expect(page.locator(".workbench-history"))
+    .toContainText("repair the SSE reconnect race");
+
   await page.locator(".otel-header a.otel-back-link[href=\"/\"]").click();
   await expect(page).toHaveURL(/\/$/);
   assertNoBrowserErrors();
