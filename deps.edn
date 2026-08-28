@@ -2,19 +2,19 @@
 
  :deps {io.github.casselc/jolt-http
         {:git/url "https://github.com/casselc/jolt-http.git"
-         :git/sha "1cdfcc06a86900ccae5c0b449956d826a05cebb6"}
+         :git/sha "9e75dd94b9ef3f5afe2096bf2370290d436443dd"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
-         :git/sha "8efcd571bb9c217080b2fed965f1af1a5ef5270d"}
+         :git/sha "a00979f5e55bc8deb98291993643ff1ccf50a57b"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "cac3cbcf1e7101c0a893c3aaffa5a3154c0f766b"}
+         :git/sha "a9badb98a86d4e0aa207aa0609da03dc8e4c087f"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
          :git/sha "6321a0a23a06e396c684d303f3cb4d31bebc8d9f"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
-         :git/sha "594b280c460155a9e5f11da9deb7784fb1f3a670"}
+         :git/sha "56bf2fdc83a84cc0f01048013f4737201deccc26"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
          :git/sha "b1dbfb4621a57efa8bce0b7de3f9cd0db52a4c64"}
