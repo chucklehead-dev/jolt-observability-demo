@@ -6,13 +6,8 @@
   same app remains fully functional with an empty journal."
   (:require [demo.aspect-journal :as journal]))
 
-(def observations (journal/journal 128))
-
 (defn around [join-point proceed]
-  (binding [journal/*journal* observations]
-    (journal/around join-point proceed)))
-
-(defn snapshot [] (journal/snapshot observations))
+  (journal/around join-point proceed))
 
 (def aspect-provider
   {:schema 1

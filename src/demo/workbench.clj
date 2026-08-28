@@ -13,7 +13,7 @@
   default)."
   (:require [clojure.core.async :as async]
             [clojure.string :as str]
-            [demo.aspect-provider :as aspect-provider]
+            [demo.aspect-journal :as aspect-journal]
             [demo.workbench-fixture :as fixture]
             [demo.workbench-view :as view]
             [glimmer.ratom :as ratom]
@@ -51,10 +51,12 @@
   an isolated ratom per app."
   ([] (state {}))
   ([{:keys [reveal-interval-ms]}]
-   {:ratom (ratom/atom {:current nil :history []})
-    :counter (atom 0)
-    :stopped? (atom false)
-    :reveal-interval-ms (or reveal-interval-ms default-reveal-interval-ms)}))
+   (let [state-ratom (ratom/atom {:current nil :history []})]
+     {:ratom state-ratom
+      :journal (aspect-journal/journal 128 #(swap! state-ratom identity))
+      :counter (atom 0)
+      :stopped? (atom false)
+      :reveal-interval-ms (or reveal-interval-ms default-reveal-interval-ms)})))
 
 (defn stop!
   "Ask any in-flight reveal loop to stop at its next tick, and any open SSE
@@ -126,7 +128,8 @@
   kicking off its background reveal. Returns the new run's id."
   [state adapter prompt]
   (let [id (swap! (:counter state) inc)
-        run (new-run id prompt adapter)]
+        run (binding [aspect-journal/*journal* (:journal state)]
+              (new-run id prompt adapter))]
     (swap! (:ratom state) apply-start run)
     (reveal-loop! state id)
     id))
@@ -178,7 +181,8 @@
       (finally (async/close! ch)))))
 
 (defn- view-state [state]
-  (assoc @(:ratom state) :observations (aspect-provider/snapshot)))
+  (assoc @(:ratom state)
+         :observations (aspect-journal/snapshot (:journal state))))
 
 (defn- fragment-handler [state]
   (fn [_request] {:status 200 :body (view/render-live (view-state state))}))

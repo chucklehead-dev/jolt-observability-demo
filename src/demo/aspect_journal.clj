@@ -8,17 +8,19 @@
 
 (def default-capacity 256)
 
-(defrecord ObservationJournal [capacity state next-operation])
+(defrecord ObservationJournal [capacity state next-operation notify])
 
 (defn journal
-  ([] (journal default-capacity))
-  ([capacity]
+  ([] (journal default-capacity nil))
+  ([capacity] (journal capacity nil))
+  ([capacity notify]
    (when-not (and (integer? capacity) (pos? capacity))
      (throw (ex-info "observation journal capacity must be a positive integer"
                      {:capacity capacity})))
    (->ObservationJournal capacity
                          (atom {:next-seq 0 :events []})
-                         (atom 0))))
+                         (atom 0)
+                         notify)))
 
 (def ^:dynamic *journal* nil)
 (def ^:dynamic *operation* nil)
@@ -49,7 +51,8 @@
            (fn [{:keys [next-seq events]}]
              (let [seq-no (inc next-seq)]
                {:next-seq seq-no
-                :events (retain (:capacity j) events (assoc event :seq seq-no))}))))
+                :events (retain (:capacity j) events (assoc event :seq seq-no))})))
+    (when-let [notify (:notify j)] (notify)))
   nil)
 
 (defn- static-context [join-point operation-id]

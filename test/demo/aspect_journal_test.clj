@@ -47,5 +47,13 @@
     (journal/reset! j)
     (is (empty? (journal/snapshot j)))))
 
+(deftest journal-notifies-after-each-observation
+  (let [notifications (atom 0)
+        j (journal/journal 8 #(swap! notifications inc))]
+    (binding [journal/*journal* j]
+      (journal/around outer (fn [] :ok)))
+    (is (= 2 @notifications))
+    (is (= [:enter :return] (mapv :phase (journal/snapshot j))))))
+
 (deftest no-bound-journal-is-a-noop
   (is (= :plain (journal/around outer (fn [] :plain)))))

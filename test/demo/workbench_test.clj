@@ -2,6 +2,7 @@
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [demo.aspect-journal :as journal]
             [demo.main :as demo]
             [demo.workbench :as workbench]
             [demo.workbench-fixture :as fixture]
@@ -56,6 +57,13 @@
     (is (= 8 (:id (:current final))))
     (is (= [7 6 5 4 3] (map :id (:history final)))
         "history keeps the 5 most recently superseded runs, newest first")))
+
+(deftest each-workbench-state-owns-its-observation-journal
+  (let [left (workbench/state)
+        right (workbench/state)]
+    (is (not (identical? (:journal left) (:journal right))))
+    (is (empty? (journal/snapshot (:journal left))))
+    (is (empty? (journal/snapshot (:journal right))))))
 
 (deftest workbench-fixture-tells-the-stale-dashboard-story-without-a-hostname
   (let [{:keys [events response capture]}
