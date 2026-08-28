@@ -1,8 +1,10 @@
 # On-demand instrumentation spike
 
-Status: synchronous V1 implemented and integration-gated, 2026-08-28. The
-remaining work is function-entry and asynchronous-completion contracts plus
-reusable DB and HTTP instrumentation packages.
+Status: synchronous call-site and fixed-arity function-entry V1 implemented
+and integration-gated, 2026-08-28. The reusable DB, HTTP client, and HTTP
+server packages are published. The Ring provider now owns callback completion
+and a post-span completion hook without adding an async primitive to the
+compiler contract.
 
 ## Goal
 
@@ -22,19 +24,21 @@ not runtime var replacement or Linux-only eBPF probing.
 ## Ownership boundary
 
 Each base library owns an inert, provider-neutral EDN resource such as
-`META-INF/jolt/aspects/jolt-http.edn`. The manifest contains no executable forms
+`META-INF/jolt/aspects/http-server.edn`. The manifest contains no executable forms
 and names semantic roles rather than OTel namespaces:
 
 ```clojure
 {:schema 1
- :library {:id io.github.casselc/jolt-http
+ :library {:id casselc/jolt-http
            :version "<exact source revision>"}
  :aspects
- [{:id :http/server-request
-   :match {:ns jolt.http.protocol
-           :call jolt.http.protocol/invoke-handler
-           :arity 7}
+ [{:id :http/server-ring-handler
+   :match {:entry jolt.http.protocol/invoke-handler :arity 8}
    :advice-role :http/server
+   :expect {:matches 1}}
+  {:id :http/server-sanitized-response
+   :match {:entry jolt.http.protocol/sanitize-response :arity 1}
+   :advice-role :http/server-response
    :expect {:matches 1}}]}
 ```
 
@@ -64,7 +68,7 @@ The embedded Samizdat demo uses the implemented application configuration:
 
 The manifests are published by the pinned Samizdat fork under
 `resources/META-INF/jolt/aspects/`; the demo no longer carries copies. Their
-compatibility id is the source revision whose call-site surface they describe,
+compatibility id is the source revision whose entry and call-site surface they describe,
 while resource-only commits may advance independently. Samizdat itself has no
 OTel dependency.
 
@@ -73,8 +77,8 @@ OTel dependency.
 The production weaver runs after macro expansion and name resolution, but
 before inference, inlining, direct linking, and tree shaking. It:
 
-- matches resolved namespace, qualified call, and arity; never source line
-  numbers;
+- matches either a qualified fixed-arity function definition entry or a
+  resolved namespace, qualified call, and arity; never source line numbers;
 - fails the build when an aspect has zero or ambiguous matches, an unsupported
   schema, an incompatible library revision, or a missing provider role;
 - preserves source position metadata for stack traces;
@@ -93,9 +97,14 @@ maintained HTTP client call. Arguments evaluate once. The target executes once.
 Its exact result or exception wins, and missing, repeated, or failing advice
 fails open without retrying an application operation that already began.
 
-Async completion is not a V1 contract. Ambient thread bindings are insufficient
-after a handler returns; a future contract must own an explicit exactly-once
-completion token and use `otel.context/bind-fn*` behavior across executors.
+V1 does not ask the compiler to understand async completion. The HTTP server
+provider uses `:replace-args-v1` to replace the normalized Ring handler with a
+wrapper that owns the existing `respond`/`raise` callbacks. It serializes their
+terminal decision, restores the captured OTel context, ends exactly once after
+the accepted callback, and then invokes an observational completion hook. That
+hook lets the embedded collector durably flush the completed server span before
+a redirect triggers the next viewer query. This is Ring callback completion,
+not proof that bytes reached the peer.
 
 ## Verified integration
 
@@ -123,15 +132,22 @@ standalone native-error fixture combines an aspect-selected call with
 `{:blocking true :capture-native-error true}` and proves advice cannot change
 the exact `[result native-error]` pair.
 
+`test/aspect_demo_e2e.sh` runs the same live-update, editor, oscope, and
+no-JavaScript browser story first from source and then from a woven native
+binary. Source mode retains five explicit fallback spans tagged
+`demo.instrumentation.mode=source-fallback`. Woven mode has six spans, uses the
+generic DB and HTTP providers, rejects every fallback tag, and verifies that
+the post-span completion hook prevents partial traces after redirects.
+
 ## Next contracts and packages
 
 1. Extend the now-tested fixed-arity function-entry selector only when a real
    anonymous, variadic, or generated-method seam requires a new contract.
-2. Specify async completion and cross-thread lifecycle ownership before
-   instrumenting Ring response completion or other callback-driven operations.
-3. The shared DB SPI manifest and reusable OTel consumer are published and the
-   demo's handwritten DB span is removed. Repeat the pattern for `jolt-http`
-   and `http-client` without weakening source-mode behavior.
+2. Generalize callback completion only when another library cannot express its
+   lifecycle by wrapping already-explicit callback arguments.
+3. Add configurable propagator composition and malformed Trace Context cases
+   to the HTTP packages; client baggage injection is intentionally absent in
+   the current release.
 4. Keep Kindly presentation advisers beside each instrumentation vocabulary,
    while leaving stored telemetry and generic viewer APIs presentation-free.
 
@@ -152,6 +168,5 @@ the exact `[result native-error]` pair.
 - Library-supplied presentation advice follows Kindly scalar wrapping and
   metadata rules, is bounded by the host, and never enters persisted telemetry.
 
-The reusable HTTP packages and async server lifecycle remain acceptance gates
-for the next phase. The DB package, synchronous compiler, and Samizdat
-integration no longer depend on a proposed or private compiler hook.
+The DB and HTTP packages, callback-owned server lifecycle, compiler, and
+Samizdat integration no longer depend on a proposed or private compiler hook.

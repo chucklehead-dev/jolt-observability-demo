@@ -20,8 +20,13 @@ do not replace WIP local roots with branch names.
 3. **OTel libraries.** Publish the maintained http-client/crypto dependency
    graph in `otel`; publish the explorer-owned `db.jdbc` clean-load fix in
    `jolt-otel-clickhouse`; publish bounded span-event rendering in
-   `jolt-otel-viewer`. Update each dependent repo to the exact resulting SHA
-   only after its own full gate is green.
+   `jolt-otel-viewer`. The provider-neutral `http-client` and `jolt-http`
+   manifests and the separate `jolt-otel-instrumentation-http-client` and
+   `jolt-otel-instrumentation-http-server` consumers are now published and
+   exact-pinned by the demo. The server consumer owns accepted Ring callback
+   completion, request-scoped source-fallback detection, and an observational
+   post-span hook. Update each dependent repo to an exact resulting SHA only
+   after its own full gate is green.
 4. **Observability demo.** The library graph now uses exact Samizdat, viewer,
    OTel, chDB, ClickHouse exporter, and oscope coordinates. The intentional
    `samizdat-demo/` local root names the enclosing application being compiled,

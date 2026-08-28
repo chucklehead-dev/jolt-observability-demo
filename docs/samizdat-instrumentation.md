@@ -33,23 +33,23 @@ every internal function.
 The application manifest owns vocabulary that would be meaningless in a
 generic HTTP or database library:
 
-| Role | Resolved call | Current call site |
+| Role | Selected definition or call | Current coverage |
 | --- | --- | --- |
-| Run | `samizdat.agent.beam/run!` arity 1 | `api/control.clj:100`, inside the future created at line 98; and `api/openai.clj:103` |
+| Run | entry of `samizdat.agent.beam/run!` arity 1 | Every caller, including embedded, control, and OpenAI surfaces |
 | Control loop | Beam scheduler scope around branch advancement | Compose around the run and `advance-branch` rules; no standalone resolved call is claimed |
 | Branch | Per-branch scope | Derived from the branch value passed to `advance-branch`; no standalone resolved call is claimed |
-| Beam turn | `samizdat.agent.beam/advance-branch` arity 3 | `agent/beam.clj:566`; encloses the production branch turn |
-| Model | `samizdat.llm.client/chat` arity 4 | `agent/infer.clj:187`; also cover arity 3 raw/probe callers |
+| Beam turn | entry of `samizdat.agent.beam/advance-branch` arity 3 | Every live beam turn |
+| Model | entry of `samizdat.llm.client/chat` arity 4 | All calls reach the canonical four-argument arity; the public arity 3 delegates to it without a duplicate outer span |
 | Model HTTP | `jolt.http-client/post` arity 2 | `llm/client.clj:152`; the single provider-independent maintained-client call site; inference calls nest beneath the model span, while auxiliary Samizdat calls retain their current run context |
 | Tool selection event | `samizdat.agent.infer/absorb` arity 3 | `agent/loop.clj:377` |
-| Tool execution | `samizdat.agent.tools/run-tool` arity 1 | `agent/loop.clj:547` |
+| Tool execution | entry of `samizdat.agent.tools/run-tool` arity 1 | Every tool dispatch through the semantic wrapper |
 | Semantic memory | `remember!` 2, `recall` 2/3, `record-outcome!` 3, `forget!` 2 | `store/knowledge.clj` |
 
 `advance-branch` is a complete turn only for the live beam driver. The
 single-driver workflow back-edge lives inside Mycelium, so universal turn spans
-need either function-entry weaving plus a Mycelium interceptor, or explicit
-hooks around `:loop/assemble` and `:loop/route`. A call-site-only weaver must not
-pretend it covers both drivers.
+still need a Mycelium interceptor or explicit hooks around `:loop/assemble` and
+`:loop/route`; function-entry weaving removes caller gaps but does not invent a
+semantic operation where the alternate driver has a different lifecycle.
 
 ## Library-owned rules
 

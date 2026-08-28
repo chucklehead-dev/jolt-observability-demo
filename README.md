@@ -19,9 +19,11 @@ jolt -m demo.main
 Open <http://127.0.0.1:8080/> and select **Generate work**. The resulting trace
 contains five parent-linked spans across a propagated producer/consumer queue
 handoff and a real loopback HTTP client/server boundary, with correlated logs.
-The compiler-woven build adds a sixth DB span around the unchanged embedded
-query through the library-owned `jolt-lang/db` manifest and the separately
-published OTel consumer. Traces and logs appear in the open page through a
+Source mode marks its three explicit HTTP fallback spans as
+`demo.instrumentation.mode=source-fallback`. The compiler-woven build replaces
+those fallbacks with separately published generic HTTP providers and adds a
+sixth DB span around the unchanged embedded query through the library-owned
+`jolt-lang/db` manifest. Traces and logs appear in the open page through a
 bounded SSE stream; the page remains usable without JavaScript.
 
 ![Trace waterfall with queue and HTTP spans](docs/screenshots/03-trace-waterfall-dialog.png)
@@ -66,7 +68,7 @@ Configuration is optional:
 - `DEMO_LEMONADE_DISABLE_THINKING` defaults to true; set it to `false` only when
   intentionally testing provider thinking behavior.
 
-![Navigating a complete agent trace](docs/screenshots/agent-trace-tour.gif)
+![A real embedded Samizdat coding run flowing into its trace](docs/screenshots/samizdat-trace-tour.gif)
 
 ![Controller intervention and revised turn](docs/screenshots/07-agent-controller-intervention.png)
 
@@ -133,6 +135,18 @@ JOLT_CHDB_LIB=/absolute/path/to/libchdb.so \
 
 `test/samizdat_real_run_smoke.sh` provides the corresponding browser-free
 compiled-binary smoke.
+
+The same deterministic real run produces the checked-in animated trace tour.
+It submits the nonce-bearing coding task, waits for the actual edit and test
+loop, navigates to the resulting trace, and opens the captured model exchange:
+
+```sh
+JOLT_CHDB_LIB=/absolute/path/to/libchdb.so npm run docs:samizdat-gif
+```
+
+This recorder opts into bounded model-content capture only for its local
+fixture and requires Chromium plus `ffmpeg`. It never records the physical
+model endpoint.
 
 ## Run the offline workbench fixture
 
@@ -206,9 +220,12 @@ JOLT_CHDB_LIB=/path/to/libchdb.so \
 ```
 
 That gate proves the plain source story has five spans, the woven story has six,
-the generated `SELECT` span is a direct child of the request span, and exporter,
-schema, explorer, API, viewer, and deferred SSE work cannot feed back through
-database auto-instrumentation.
+the generated `SELECT` span is a direct child of the request span, generic HTTP
+spans contain no fallback provenance, and exporter, schema, explorer, API,
+viewer, and deferred SSE work cannot feed back through auto-instrumentation.
+The server provider ends its span at accepted Ring callback completion and then
+flushes it before redirect-driven viewer queries, preventing partial trace
+roots in both JavaScript and no-JavaScript flows.
 
 ## Receive OTLP
 
@@ -253,9 +270,17 @@ The same deterministic story owns the checked-in documentation frames:
 JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:screenshots
 ```
 
+The JVM Plotje oracle verifies that the demo's normalized chart spec is
+accepted by the exact upstream Plotje revision:
+
+```sh
+clojure -M:plotje-oracle-test
+```
+
 See [docs/storyboard.md](docs/storyboard.md) for the tested interaction and
 [docs/instrumented-build-spike.md](docs/instrumented-build-spike.md) for the
-proposed provider-neutral aspect/weaver proof. The resolved Samizdat run,
+implemented provider-neutral aspect/weaver contract and remaining propagation
+and lifecycle fast follows. The resolved Samizdat run,
 control-loop, model, tool, memory, HTTP, and DB seams are recorded in
 [docs/samizdat-instrumentation.md](docs/samizdat-instrumentation.md).
 The cross-repository release order and exact remaining SHA replacements are in

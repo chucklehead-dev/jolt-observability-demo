@@ -19,11 +19,11 @@ must not navigate or reload. A durable SSE patch adds the newest trace and logs.
 The ordinary source workload records five parent-linked spans:
 
 ```text
-HTTP POST /work
+POST /work
   +-- demo.jobs publish
   |    `-- demo.jobs process
-  `-- HTTP GET /upstream
-       `-- HTTP GET /upstream
+  `-- GET
+       `-- GET /upstream
 ```
 
 The DB query executes against embedded chDB. The queue handoff injects and
@@ -73,8 +73,10 @@ querying, and downloading, so the utility cannot recursively observe itself.
 
 `npm run test:browser:aspect` builds the same application with selected
 instrumentation aspects. It proves the generated DB span replaces the removed
-handwritten span. A reusable HTTP package remains the next equivalent slice;
-see [instrumented-build-spike.md](instrumented-build-spike.md).
+handwritten span and the reusable HTTP providers replace all three tagged
+source fallbacks without duplicates. The provider's post-span completion hook
+also proves a POST/303 redirect cannot expose a partially flushed trace; see
+[instrumented-build-spike.md](instrumented-build-spike.md).
 
 The persistent browser gate runs the ordinary live-update story, terminates the
 Jolt process, starts a second process over the same temporary `chdb:` path, and
@@ -127,3 +129,26 @@ The animation opens the two-turn trace, finds the controller intervention, and
 then inspects the revised generation's captured prompt and response.
 
 ![Navigating the complete agent trace](screenshots/agent-trace-tour.gif)
+
+## Real embedded Samizdat coding run
+
+The primary integration animation uses the compiled standalone application,
+not the scripted workbench adapter. It submits a concrete arithmetic regression
+task to the embedded Samizdat control loop, streams the real tool progression,
+then opens the resulting compiler-woven trace and its bounded model exchange.
+The fixture model verifies the exact prompt and W3C `traceparent`; Samizdat
+creates and claims a task, reads source and tests, edits the implementation,
+runs the focused test, and reports the result.
+
+After building `target/samizdat-observability-demo` as described in the README,
+record the same asserted story with:
+
+```sh
+JOLT_CHDB_LIB=/path/to/libchdb.so npm run docs:samizdat-gif
+```
+
+This one recorder opts into bounded prompt and response capture. It uses a
+loopback fixture whose physical address is excluded from the UI and telemetry;
+the browser assertion rejects that address before preserving the animation.
+
+![Real Samizdat run and trace](screenshots/samizdat-trace-tour.gif)
