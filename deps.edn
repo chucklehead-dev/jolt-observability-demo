@@ -11,7 +11,7 @@
          :git/sha "9d5ba0a95f79e839b8292b2e5e70c6ee3716e7be"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
-         :git/sha "df94be533b56c70a9a11951f45be84216d9d0b50"}
+         :git/sha "fffaf33208d9404ff4f8e48ecf6d8f9ca03a62c3"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
          :git/sha "c1d4aad8188811258dda7d777808649255b13cbc"}
@@ -20,7 +20,7 @@
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
         io.github.chucklehead-dev/oscope
         {:git/url "https://github.com/chucklehead-dev/oscope.git"
-         :git/sha "c8f09f76b123902b62f515c538b9a9f353342089"}
+         :git/sha "06f35d4c257a9f8b2b789c4278c40e91b94a3a0c"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}
