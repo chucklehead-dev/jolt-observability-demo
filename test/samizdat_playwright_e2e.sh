@@ -29,6 +29,17 @@ grep -q ':provider demo.samizdat-journal-provider/aspect-provider' \
   "$repo/target/samizdat-aspects.edn"
 grep -q ':provider demo.samizdat-aspect-provider/aspect-provider' \
   "$repo/target/samizdat-aspects.edn"
+grep -Fq ':advice-role :http/client :consumers [{:advice demo.samizdat-aspect-provider/around-http-client' \
+  "$repo/target/samizdat-aspects.edn"
+if grep -Fq ':advice-role :http/client :consumers [{:advice demo.samizdat-journal-provider/around' \
+    "$repo/target/samizdat-aspects.edn"; then
+  echo "FAIL: semantic journal was woven into HTTP client plumbing" >&2
+  exit 1
+fi
+grep -Fq ':advice-role :samizdat/control-loop :consumers [{:advice demo.samizdat-journal-provider/around' \
+  "$repo/target/samizdat-aspects.edn"
+grep -Fq ':advice-role :samizdat/tool-selection :consumers [{:advice demo.samizdat-journal-provider/around' \
+  "$repo/target/samizdat-aspects.edn"
 mkdir -p "$scratch/project"
 cp -R "$repo/test/fixtures/samizdat-coding-project/." "$scratch/project/"
 

@@ -12,10 +12,11 @@
             [otel.context :as context]
             [otel.propagation :as propagation]
             [otel.sdk :as sdk]
-            [otel.trace :as trace]))
+            [otel.trace :as trace]
+            [samizdat.instrumentation :as samizdat-instrumentation]))
 
 (def samizdat-build-id
-  "35b01fddd20fa9e6d77678eadc2a2bcc6fb9ac2d")
+  samizdat-instrumentation/compatibility-id)
 (def ^:private scope-name "io.github.yogthos/samizdat.auto")
 
 (def max-content-chars
@@ -154,6 +155,14 @@
      [:samizdat.branch.id (safe-id (:id branch))]
      [:samizdat.turn.number (number-value turn)]]))
 
+(defn- control-loop-attributes [[ctx branches start-turn]]
+  (present
+    [[:samizdat.run.id (safe-id (:run-id ctx))]
+     [:samizdat.scheduler.start_turn (number-value start-turn)]
+     [:samizdat.scheduler.branch_count
+      (when (sequential? branches) (count branches))]
+     [:samizdat.run.max_turns (number-value (:max-turns ctx))]]))
+
 (defn- model-attributes [[_adapter config messages opts]]
   (let [capture? (:capture? *content-policy*)
         prompt (when capture? (captured-messages messages))]
@@ -189,6 +198,7 @@
 (defn- initial-attributes [role args]
   (case role
     :samizdat/run (run-attributes args)
+    :samizdat/control-loop (control-loop-attributes args)
     :samizdat/turn (turn-attributes args)
     :samizdat/model (model-attributes args)
     :samizdat/tool (tool-attributes args)
@@ -207,6 +217,12 @@
                  (cond (not capture?) "omitted" (nil? response) "redaction-failed"
                        :else "captured")]
                 [:samizdat.response.sanitized response]]))
+
+    :samizdat/control-loop
+    (present [[:samizdat.run.status (bounded-name (:status result))]
+              [:samizdat.scheduler.branch_count
+               (when (sequential? (:branches result))
+                 (count (:branches result)))]])
 
     :samizdat/turn
     (present [[:samizdat.branch.status (bounded-name (:status result))]
@@ -243,18 +259,20 @@
                 [:samizdat.tool.result_sanitized tool-result]]))
     {}))
 
-(defn- span-name [role]
+(defn- span-name [role args]
   (case role
     :samizdat/run "samizdat.run"
-    :samizdat/turn "samizdat.turn"
+    :samizdat/control-loop "samizdat.control_loop"
+    :samizdat/turn (str "samizdat.turn " (or (number-value (nth args 2 nil)) "unknown"))
     :samizdat/model "samizdat.model"
-    :samizdat/tool "samizdat.tool"
+    :samizdat/tool (str "execute_tool "
+                         (or (bounded-name (:tool-name (first args))) "unknown"))
     "samizdat.operation"))
 
 (defn- traced [join-point evaluated-args proceed]
   (let [role (:advice-role join-point)
         tracer (sdk/tracer scope-name {:version samizdat-build-id})
-        span (trace/start-span tracer (span-name role)
+        span (trace/start-span tracer (span-name role evaluated-args)
                                {:kind :internal
                                 :attributes (initial-attributes role evaluated-args)})]
     (try
@@ -278,6 +296,57 @@
   "Create one OpenTelemetry span around a synchronous Samizdat operation."
   [join-point evaluated-args proceed]
   (traced join-point evaluated-args proceed))
+
+(defn- event-observation [role args result]
+  (case role
+    :samizdat/branch-open
+    (let [[_conn run-id branch] args]
+      ["samizdat.branch.opened"
+       (present [[:samizdat.run.id (safe-id run-id)]
+                 [:samizdat.branch.id (safe-id result)]
+                 [:samizdat.branch.parent_id (safe-id (:parent-id branch))]
+                 [:samizdat.branch.created_at_turn
+                  (number-value (:created-at-turn branch))]])])
+
+    :samizdat/branch-close
+    (when (and (number? result) (pos? result))
+      (let [[_conn run-id branch-id status _reason] args]
+        ["samizdat.branch.closed"
+         (present [[:samizdat.run.id (safe-id run-id)]
+                   [:samizdat.branch.id (safe-id branch-id)]
+                   [:samizdat.branch.status (bounded-name status)]
+                   [:db.response.affected_rows (number-value result)]])]))
+
+    :samizdat/tool-selection
+    (let [[_tape _response turn] args
+          parsed (:parsed result)]
+      ["samizdat.tool.selected"
+       (present [[:samizdat.turn.number (number-value turn)]
+                 [:samizdat.tool.selection_state
+                  (if (map? parsed) "parsed" "no_call")]
+                 [:gen_ai.tool.name (bounded-name (:name parsed))]])])
+
+    :samizdat/steer
+    ["samizdat.steer.evaluated"
+     (present [[:samizdat.steer.selected (boolean result)]
+               [:samizdat.steer.gate (bounded-name (:gate result))]
+               [:samizdat.steer.priority (number-value (:priority result))]
+               [:gen_ai.tool.name (bounded-name (:tool result))]
+               [:samizdat.steer.passed_over_count
+                (when (sequential? (:passed-over result))
+                  (count (:passed-over result)))]])]
+
+    nil))
+
+(defn around-event
+  "Record one content-free semantic event after a successful operation."
+  [join-point evaluated-args proceed]
+  (let [result (proceed)]
+    (when-let [[event-name attributes]
+               (event-observation (:advice-role join-point)
+                                  evaluated-args result)]
+      (trace/add-event! (trace/current-span) event-name attributes))
+    result))
 
 (def ^:private trace-context-header-names
   #{"traceparent" "tracestate"})
@@ -339,11 +408,22 @@
    :libraries {'yogthos/samizdat samizdat-build-id}
    :roles {:samizdat/run {:fn 'demo.samizdat-aspect-provider/around
                           :contract :args-v1}
+           :samizdat/control-loop {:fn 'demo.samizdat-aspect-provider/around
+                                   :contract :args-v1}
+           :samizdat/branch-open {:fn 'demo.samizdat-aspect-provider/around-event
+                                  :contract :args-v1}
+           :samizdat/branch-close {:fn 'demo.samizdat-aspect-provider/around-event
+                                   :contract :args-v1}
            :samizdat/turn {:fn 'demo.samizdat-aspect-provider/around
                            :contract :args-v1}
            :samizdat/model {:fn 'demo.samizdat-aspect-provider/around
                             :contract :args-v1}
+           :samizdat/tool-selection
+           {:fn 'demo.samizdat-aspect-provider/around-event
+            :contract :args-v1}
            :samizdat/tool {:fn 'demo.samizdat-aspect-provider/around
                            :contract :args-v1}
+           :samizdat/steer {:fn 'demo.samizdat-aspect-provider/around-event
+                            :contract :args-v1}
            :http/client {:fn 'demo.samizdat-aspect-provider/around-http-client
                          :contract :replace-args-v1}}})

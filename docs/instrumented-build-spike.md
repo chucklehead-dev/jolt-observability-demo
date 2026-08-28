@@ -60,11 +60,19 @@ The embedded Samizdat demo uses the implemented application configuration:
 {:jolt/build
  {:aspects
   [{:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
-    :providers [demo.samizdat-journal-provider
-                demo.samizdat-aspect-provider]}
+    :consumers
+    [{:provider demo.samizdat-journal-provider
+      :roles [:samizdat/run]}
+     {:provider demo.samizdat-aspect-provider
+      :roles :all}]}
    {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"
-    :providers [demo.samizdat-journal-provider
-                demo.samizdat-aspect-provider]}]
+    :consumers
+    [{:provider demo.samizdat-journal-provider
+      :roles [:samizdat/control-loop :samizdat/branch-open
+              :samizdat/branch-close :samizdat/turn :samizdat/model
+              :samizdat/tool-selection :samizdat/tool :samizdat/steer]}
+     {:provider demo.samizdat-aspect-provider
+      :roles :all}]}]
   :aspect-report "target/samizdat-aspects.edn"}}
 ```
 
@@ -76,10 +84,12 @@ while resource-only commits may advance independently. Samizdat itself has no
 OTel dependency.
 
 These are independent ordered consumers, not one hand-composed provider. The
-bounded journal is outermost and the OTel span is inner; the compiler owns that
-composition and records both providers on each logical join point. The journal
-provider's HTTP role is deliberately transparent, preserving the existing
-privacy boundary where only the specialized OTel consumer observes model HTTP.
+bounded journal is outermost and the OTel span is inner where both select a
+semantic role; the compiler owns that composition and records both consumers on
+the physical join point. The journal selects no HTTP role at all, while the
+specialized OTel consumer alone observes model HTTP. This role filter is part of
+the compiler configuration and report rather than transparent placeholder
+advice in the non-OTel package.
 
 ## Weaver contract
 
@@ -121,11 +131,17 @@ The current woven Samizdat artifact produces this real control-loop trace:
 
 ```text
 samizdat.run
-  `-- samizdat.turn
-       `-- samizdat.model
-            +-- HTTP POST client
-            `-- samizdat.tool
+  `-- samizdat.control_loop
+       `-- samizdat.turn N
+            |-- samizdat.model
+            |    `-- HTTP POST client
+            `-- execute_tool NAME
 ```
+
+Branch-open, successful branch-close, tool-selection, and steer-evaluation
+events narrate the scheduler without turning instantaneous decisions into
+spans. Database and lower HTTP operations retain the semantic span active when
+the library-owned instrumentation observes them.
 
 `test/samizdat_playwright_e2e.sh` proves the exact submitted coding prompt
 drives the real embedded Samizdat loop, every model request carries a valid

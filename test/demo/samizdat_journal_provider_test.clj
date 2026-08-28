@@ -1,28 +1,30 @@
 (ns demo.samizdat-journal-provider-test
   (:require [clojure.test :refer [deftest is]]
             [demo.aspect-journal :as journal]
-            [demo.samizdat-aspect-provider :as otel-provider]
-            [demo.samizdat-journal-provider :as provider]))
+            [demo.samizdat-journal-provider :as provider]
+            [samizdat.instrumentation :as samizdat-instrumentation]))
 
 (defn- join-point [role id]
   {:id id
    :advice-role role
    :library {:id 'yogthos/samizdat
-             :version otel-provider/samizdat-build-id}})
+             :version samizdat-instrumentation/compatibility-id}})
 
 (deftest provider-implements-the-complete-selected-role-surface
-  (is (= {'yogthos/samizdat otel-provider/samizdat-build-id}
+  (is (= {'yogthos/samizdat samizdat-instrumentation/compatibility-id}
          (:libraries provider/aspect-provider)))
-  (is (= #{:samizdat/run :samizdat/turn :samizdat/model
-           :samizdat/tool :http/client}
+  (is (= #{:samizdat/run :samizdat/control-loop
+           :samizdat/branch-open :samizdat/branch-close
+           :samizdat/turn :samizdat/model :samizdat/tool-selection
+           :samizdat/tool :samizdat/steer}
          (set (keys (:roles provider/aspect-provider)))))
-  (doseq [role [:samizdat/run :samizdat/turn :samizdat/model :samizdat/tool]]
+  (doseq [role [:samizdat/run :samizdat/control-loop
+                :samizdat/branch-open :samizdat/branch-close
+                :samizdat/turn :samizdat/model :samizdat/tool-selection
+                :samizdat/tool :samizdat/steer]]
     (is (= {:fn 'demo.samizdat-journal-provider/around
             :contract :args-v1}
-           (get-in provider/aspect-provider [:roles role]))))
-  (is (= {:fn 'demo.samizdat-journal-provider/around-http-client
-          :contract :replace-args-v1}
-         (get-in provider/aspect-provider [:roles :http/client]))))
+           (get-in provider/aspect-provider [:roles role])))))
 
 (deftest journal-consumer-is-useful-without-an-otel-sdk
   (let [j (journal/journal 16)
@@ -65,20 +67,3 @@
     (is (string? (:exception-type terminal)))
     (doseq [secret ["secret failure" "secret response" "secret prompt"]]
       (is (not (.contains serialized secret))))))
-
-(deftest http-role-is-transparent-and-does-not-expand-the-journal-vocabulary
-  (let [j (journal/journal 8)
-        calls (atom [])
-        expected (Object.)
-        args ["http://private.invalid" {:body "secret"}]
-        actual
-        (binding [journal/*journal* j]
-          (provider/around-http-client
-            (join-point :http/client :samizdat.llm.client/http-post)
-            args
-            (fn
-              ([] (swap! calls conj args) expected)
-              ([replacement] (swap! calls conj replacement) expected))))]
-    (is (identical? expected actual))
-    (is (= [args] @calls))
-    (is (empty? (journal/snapshot j)))))

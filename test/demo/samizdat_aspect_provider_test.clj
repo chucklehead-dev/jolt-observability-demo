@@ -65,7 +65,7 @@
         (let [spans (memory/spans exporter)
               by-name (into {} (map (juxt :name identity) spans))
               run (get by-name "samizdat.run")
-              turn (get by-name "samizdat.turn")
+              turn (get by-name "samizdat.turn 2")
               model (get by-name "samizdat.model")]
           (is (= 3 (count spans)))
           (is (= (get-in run [:span-context :span-id]) (:parent-span-id turn)))
@@ -130,7 +130,7 @@
             spans (memory/spans exporter)
             request (first (filter #(= "request" (:name %)) spans))
             run (first (filter #(= "samizdat.run" (:name %)) spans))
-            turn (first (filter #(= "samizdat.turn" (:name %)) spans))
+            turn (first (filter #(= "samizdat.turn 1" (:name %)) spans))
             enters (filter #(= :enter (:phase %)) (journal/snapshot j))
             run-enter (first enters)
             turn-enter (second enters)]
@@ -155,6 +155,7 @@
             attrs (:attributes span)
             serialized (pr-str span)]
         (is (= :evidence (:category result)))
+        (is (= "execute_tool read_file" (:name span)))
         (is (= "read_file" (get attrs "gen_ai.tool.name")))
         (is (= "omitted" (get attrs "samizdat.tool.arguments_state")))
         (is (= "omitted" (get attrs "samizdat.tool.result_state")))
@@ -278,9 +279,77 @@
          (get-in provider/aspect-provider [:roles :http/client :contract])))
   (is (= 'demo.samizdat-aspect-provider/around-http-client
          (get-in provider/aspect-provider [:roles :http/client :fn])))
-  (doseq [role [:samizdat/run :samizdat/turn :samizdat/model :samizdat/tool]]
+  (doseq [role [:samizdat/run :samizdat/control-loop :samizdat/turn
+                :samizdat/model :samizdat/tool]]
     (is (= 'demo.samizdat-aspect-provider/around
            (get-in provider/aspect-provider [:roles role :fn])))))
+
+(deftest control-loop-parents-turns-and-safe-lifecycle-events-narrate-the-run
+  (with-memory-sdk
+    (fn [exporter]
+      (provider/around
+       (join-point :samizdat/run :samizdat.embed/beam-run)
+       [{:problem "secret task"}]
+       (fn []
+         (provider/around-event
+          (join-point :samizdat/branch-open :samizdat.store.runs/branch-open)
+          [:connection "run-control"
+           {:branch-id "B1" :parent-id nil :problem "secret branch task"}]
+          (fn [] "B1"))
+         (provider/around
+          (join-point :samizdat/control-loop :samizdat.agent.beam/control-loop)
+          [{:run-id "run-control" :max-turns 8} [{:id "B1"}] 1]
+          (fn []
+            (provider/around
+             (join-point :samizdat/turn :samizdat.agent.beam/turn)
+             [{:run-id "run-control"} {:id "B1"} 1]
+             (fn []
+               (provider/around-event
+                (join-point :samizdat/tool-selection
+                            :samizdat.agent.infer/tool-selection)
+                [{:messages []} {:content "secret response"} 1]
+                (fn [] {:parsed {:name "read_file"}
+                        :said "secret response"}))
+               (provider/around-event
+                (join-point :samizdat/steer :samizdat.agent.arbiter/steer)
+                [{:directive "secret controller instruction"}]
+                (fn [] {:gate :human-directive :priority 0
+                        :tool "read_file" :passed-over [:reflection]}))
+               {:id "B1" :status :active}))
+            (provider/around-event
+             (join-point :samizdat/branch-close
+                         :samizdat.store.runs/branch-close)
+             [:connection "run-control" "B1" :done "secret reason"]
+             (fn [] 1))
+            (provider/around-event
+             (join-point :samizdat/branch-close
+                         :samizdat.store.runs/branch-close)
+             [:connection "run-control" "B1" :culled "stale close reason"]
+             (fn [] 0))
+            {:run-id "run-control" :status :done :branches [{:id "B1"}]}))
+         {:run-id "run-control" :status :done :branches [{:id "B1"}]}))
+      (let [spans (memory/spans exporter)
+            run (first (filter #(= "samizdat.run" (:name %)) spans))
+            control (first (filter #(= "samizdat.control_loop" (:name %)) spans))
+            turn (first (filter #(= "samizdat.turn 1" (:name %)) spans))
+            events (concat (:events run) (:events control) (:events turn))
+            by-name (into {} (map (juxt :name identity) events))
+            selection (get by-name "samizdat.tool.selected")
+            steering (get by-name "samizdat.steer.evaluated")]
+        (is (= (get-in run [:span-context :span-id]) (:parent-span-id control)))
+        (is (= (get-in control [:span-context :span-id]) (:parent-span-id turn)))
+        (is (= #{"samizdat.branch.opened" "samizdat.branch.closed"
+                 "samizdat.tool.selected" "samizdat.steer.evaluated"}
+               (set (keys by-name))))
+        (is (= 1 (count (filter #(= "samizdat.branch.closed" (:name %)) events)))
+            "a stale close that changed no row is not a lifecycle transition")
+        (is (= "read_file" (get-in selection [:attributes "gen_ai.tool.name"])))
+        (is (= "human-directive"
+               (get-in steering [:attributes "samizdat.steer.gate"])))
+        (doseq [secret ["secret task" "secret branch task" "secret response"
+                        "secret controller instruction" "secret reason"
+                        "stale close reason"]]
+          (is (not (str/includes? (pr-str spans) secret))))))))
 
 (deftest outbound-http-advice-injects-its-client-context-without-content
   (with-memory-sdk
@@ -361,4 +430,4 @@
            (:match http)))
     (is (= :http/client (:advice-role http)))
     (is (= {:matches 1} (:expect http)))
-    (is (= 4 (count (:aspects manifest))))))
+    (is (= 9 (count (:aspects manifest))))))

@@ -97,15 +97,18 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
   await expect.poll(async () => {
     detail = await json(await request.get(`/api/traces/${summary.traceId}`));
     const names = new Set(detail.spans.map((span) => span.name));
-    return ["samizdat.run", "samizdat.turn", "samizdat.model", "samizdat.tool"]
-      .every((name) => names.has(name));
+    return names.has("samizdat.run") && names.has("samizdat.control_loop") &&
+      names.has("samizdat.model") &&
+      [...names].some((name) => name.startsWith("samizdat.turn ")) &&
+      [...names].some((name) => name.startsWith("execute_tool "));
   }).toBe(true);
 
   const byId = new Map(detail.spans.map((span) => [span.spanId, span]));
   const roots = detail.spans.filter((span) => span.name === "samizdat.run" && !span.parentSpanId);
-  const turns = detail.spans.filter((span) => span.name === "samizdat.turn");
+  const control = detail.spans.find((span) => span.name === "samizdat.control_loop");
+  const turns = detail.spans.filter((span) => span.name.startsWith("samizdat.turn "));
   const models = detail.spans.filter((span) => span.name === "samizdat.model");
-  const tools = detail.spans.filter((span) => span.name === "samizdat.tool");
+  const tools = detail.spans.filter((span) => span.name.startsWith("execute_tool "));
   const leaves = [...models, ...tools];
   const clients = detail.spans.filter((span) =>
     span.name === "HTTP POST" && span.kind === "client");
@@ -115,6 +118,8 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
     ["SELECT", "INSERT", "UPDATE", "DELETE"].includes(span.name) &&
     JSON.stringify(span.attributes).includes("sqlite"));
   expect(roots).toHaveLength(1);
+  expect(control).toBeDefined();
+  expect(control.parentSpanId).toBe(roots[0].spanId);
   expect(turns.length).toBeGreaterThan(0);
   expect(leaves.length).toBeGreaterThan(0);
   expect(clients.length).toBeGreaterThan(0);
@@ -122,7 +127,9 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
   expect(databases.length).toBeGreaterThan(0);
 
   for (const turn of turns) {
-    expect(ancestors(turn, byId).some((span) => span.name === "samizdat.run")).toBe(true);
+    const chain = ancestors(turn, byId);
+    expect(chain.some((span) => span.name === "samizdat.control_loop")).toBe(true);
+    expect(chain.some((span) => span.name === "samizdat.run")).toBe(true);
   }
   for (const leaf of leaves) {
     const chain = ancestors(leaf, byId);
@@ -130,10 +137,10 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
   }
   for (const tool of tools) {
     expect(ancestors(tool, byId)
-      .some((span) => span.name === "samizdat.turn")).toBe(true);
+      .some((span) => span.name.startsWith("samizdat.turn "))).toBe(true);
   }
   expect(models.some((model) => ancestors(model, byId)
-    .some((span) => span.name === "samizdat.turn"))).toBe(true);
+    .some((span) => span.name.startsWith("samizdat.turn ")))).toBe(true);
 
   for (const client of clients) {
     const chain = ancestors(client, byId);
@@ -147,6 +154,17 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
     const returned = span.attributes?.["db.response.returned_rows"];
     return returned !== undefined && Number.isSafeInteger(Number(returned));
   })).toBe(true);
+  const toolNames = new Set(tools.map((span) => span.attributes?.["gen_ai.tool.name"]));
+  for (const expectedTool of ["task", "read_file", "edit_file", "shell", "done"]) {
+    expect(toolNames.has(expectedTool)).toBe(true);
+  }
+  const semanticEvents = new Set(detail.spans.flatMap(
+    (span) => (span.events || []).map((event) => event.name),
+  ));
+  for (const expectedEvent of ["samizdat.branch.opened", "samizdat.branch.closed",
+    "samizdat.tool.selected", "samizdat.steer.evaluated"]) {
+    expect(semanticEvents.has(expectedEvent)).toBe(true);
+  }
 
   // The adapter polls Samizdat's durable journal after the semantic work has
   // completed. Those read-model queries are viewer plumbing, not new traces.
@@ -171,7 +189,7 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
   const modelClientContexts = new Set(clients.filter((client) => {
     const chain = ancestors(client, byId);
     return chain[0]?.name === "samizdat.model" &&
-      chain.some((span) => span.name === "samizdat.turn") &&
+      chain.some((span) => span.name.startsWith("samizdat.turn ")) &&
       chain.some((span) => span.name === "samizdat.run");
   }).map((span) => `00-${span.traceId}-${span.spanId}-01`));
   expect(modelClientContexts.size).toBeGreaterThan(0);

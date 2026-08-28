@@ -4,7 +4,7 @@
         {:local/root ".."}
         io.github.casselc/samizdat
         {:git/url "https://github.com/casselc/samizdat.git"
-         :git/sha "cbb8f314fc09d37e9a613a7891f4febb6fce9181"}
+         :git/sha "7a72c9b52e35f4dd31daefcef2a9b3235a80e475"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}}
@@ -23,11 +23,24 @@
             {:resource "META-INF/jolt/aspects/http-server.edn"
              :provider otel.instrumentation.http-server}
             {:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
-             :providers [demo.samizdat-journal-provider
-                         demo.samizdat-aspect-provider]}
+             :consumers
+             [{:provider demo.samizdat-journal-provider
+               :roles [:samizdat/run]}
+              {:provider demo.samizdat-aspect-provider
+               :roles :all}]}
             {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"
-             :providers [demo.samizdat-journal-provider
-                         demo.samizdat-aspect-provider]}]
+             :consumers
+             [{:provider demo.samizdat-journal-provider
+               :roles [:samizdat/control-loop
+                       :samizdat/branch-open
+                       :samizdat/branch-close
+                       :samizdat/turn
+                       :samizdat/model
+                       :samizdat/tool-selection
+                       :samizdat/tool
+                       :samizdat/steer]}
+              {:provider demo.samizdat-aspect-provider
+               :roles :all}]}]
   :aspect-report "../target/samizdat-aspects.edn"}
 
  :aliases {:test {:extra-paths ["../test"]}}
