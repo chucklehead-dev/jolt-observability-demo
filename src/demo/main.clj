@@ -16,6 +16,7 @@
             [otel.context :as context]
             [otel.exporter.chdb :as chdb-export]
             [otel.exporter.chdb.explorer :as explorer]
+            [otel.instrumentation.http-server :as http-server-instrumentation]
             [otel.logs :as logs]
             [otel.otlp.http-receiver :as otlp-receiver]
             [otel.propagation :as propagation]
@@ -43,6 +44,8 @@
        "missing verification step, then return a revised answer that fixes "
        "it. Preserve the original task and be concrete."))
 (def ^:private max-captured-response-length 2000)
+(def ^:dynamic *source-http-fallback?*
+  false)
 (def ^:private json-headers {"Content-Type" "application/json; charset=UTF-8"
                              "Cache-Control" "no-store"})
 
@@ -379,31 +382,41 @@
                           :attributes {:messaging.destination.name "demo.jobs"}})
       (:body envelope))))
 
-(defn- real-work! [{:keys [connection port tracer logger propagator]}]
+(defn- loopback-request!
+  [{:keys [port tracer propagator]}]
+  (let [request #(http-client/get
+                  (str "http://127.0.0.1:" port "/upstream")
+                  {:headers (when *source-http-fallback?*
+                              (propagation/inject-current propagator {}))
+                   :conn-timeout 2000 :socket-timeout 5000
+                   :throw-exceptions false})]
+    (if *source-http-fallback?*
+      (trace/with-span
+        [span tracer "GET"
+         {:kind :client
+          :attributes {:http.request.method "GET"
+                       :url.scheme "http"
+                       :server.address "127.0.0.1"
+                       :server.port port
+                       :url.full (str "http://127.0.0.1:" port "/REDACTED")
+                       :demo.instrumentation.mode "source-fallback"}}]
+        (let [response (request)]
+          (trace/set-attribute! span :http.response.status_code (:status response))
+          (when (>= (:status response) 400)
+            (trace/set-status! span :error (str "HTTP " (:status response))))
+          response))
+      (request))))
+
+(defn- real-work! [{:keys [connection logger] :as app}]
   (logs/emit! logger {:body "calling loopback upstream" :severity :info
                       :attributes {:http.route "/work"}})
   (database-work! connection)
-  (queue-work! tracer logger propagator)
-  (trace/with-span [client-span tracer "HTTP GET /upstream"
-                    {:kind :client
-                     :attributes {:http.request.method "GET"
-                                  :http.route "/upstream"
-                                  :server.address "127.0.0.1"
-                                  :server.port port}}]
-    (let [headers (propagation/inject-current propagator {})
-          response (http-client/get (str "http://127.0.0.1:" port "/upstream")
-                                    {:headers headers
-                                     :conn-timeout 2000 :socket-timeout 5000
-                                     :throw-exceptions false})]
-      (trace/set-attribute! client-span :http.response.status_code (:status response))
-      (if (= 200 (:status response))
-        (do (trace/set-status! client-span :ok)
-            (logs/emit! logger {:body "loopback upstream completed" :severity :info})
-            {:upstream (json/read-str (:body response) :key-fn keyword)})
-        (do
-          (trace/set-status! client-span :error
-                             (str "HTTP " (:status response)))
-          (throw (ex-info "loopback upstream failed" {:status (:status response)})))))))
+  (queue-work! (:tracer app) logger (:propagator app))
+  (let [response (loopback-request! app)]
+    (if (= 200 (:status response))
+      (do (logs/emit! logger {:body "loopback upstream completed" :severity :info})
+          {:upstream (json/read-str (:body response) :key-fn keyword)})
+      (throw (ex-info "loopback upstream failed" {:status (:status response)})))))
 
 (defn- sanitized-captured-response [value]
   ;; Thinking is disabled by default, but strip the common delimited form too
@@ -463,13 +476,14 @@
                            :server.address lemonade-telemetry-address
                            :samizdat.turn.number turn-number}}]
             (let [response
-                  (http-client/post
-                   (str (str/replace lemonade-base-url #"/+$" "")
-                        "/chat/completions")
-                   {:headers (propagation/inject-current propagator {})
-                    :body payload :content-type :json
-                    :conn-timeout 5000 :socket-timeout 300000
-                    :throw-exceptions false})]
+                  (context/with-instrumentation-suppressed
+                    (http-client/post
+                     (str (str/replace lemonade-base-url #"/+$" "")
+                          "/chat/completions")
+                     {:headers (propagation/inject-current propagator {})
+                      :body payload :content-type :json
+                      :conn-timeout 5000 :socket-timeout 300000
+                      :throw-exceptions false}))]
               (trace/set-attribute! http-span :http.response.status_code
                                     (:status response))
               (when (>= (:status response) 400)
@@ -839,56 +853,82 @@
           (error-response 400 "trace id must be 32 lowercase hex characters"))
         :else (error-response 404 "not found")))))
 
+(defn server-instrumentation-excluded?
+  "Return true before HTTP-server advice extracts context or starts a span for
+  receiver, viewer, explorer, editor, and workbench utility traffic. This is
+  also used by the handler's storage-suppression policy, so the compiler-woven
+  server boundary and the application agree on one feedback-loop fence."
+  [app request]
+  (let [route (route-for (:uri request) (:oscope-path app))]
+    (or (contains? otlp-receiver/receiver-paths route)
+        (= route "/")
+        (= route "/traces/:trace-id")
+        (= route "/assets/otel-viewer.js")
+        (= route "/workbench")
+        (= route "/assets/workbench.js")
+        (contains? #{(:oscope-path app)
+                     (oscope-web/export-path (:oscope-path app))}
+                   route)
+        (contains? editor-paths route)
+        (contains? #{"/agent-work"
+                     "/agent-work-with-response"
+                     "/agent-work-intervention"} route)
+        (str/starts-with? route "/api/"))))
+
+(defn- telemetry-storage-route? [app request route]
+  (and (= :get (:request-method request))
+       (or (= route "/")
+           (= route "/traces/:trace-id")
+           (str/starts-with? route "/api/")
+           (contains? #{(:oscope-path app)
+                        (oscope-web/export-path (:oscope-path app))}
+                      route))))
+
+(defn- source-http-fallback
+  [app dispatch request route]
+  (let [method (str/upper-case (name (or (:request-method request) :unknown)))
+        parent (propagation/extract (:propagator app) context/root
+                                    (or (:headers request) {}))]
+    (trace/with-span
+      [span (:tracer app) (str method " " route)
+       {:kind :server
+        :parent parent
+        :attributes {:http.request.method method
+                     :http.route route
+                     :url.path (:uri request)
+                     :demo.instrumentation.mode "source-fallback"}}]
+      (binding [*source-http-fallback?* true]
+        (let [response (dispatch request)
+              status (:status response)]
+          (when (integer? status)
+            (trace/set-attribute! span :http.response.status_code status)
+            (when (>= status 500)
+              (trace/set-status! span :error (str "HTTP " status))))
+          response)))))
+
 (defn handler [app]
-  (let [dispatch (raw-handler app)
-        tracer (:tracer app)
-        propagator (:propagator app)]
+  (let [dispatch (raw-handler app)]
     (otlp-receiver/wrap-suppress-receiver-telemetry
-     (fn [{:keys [request-method uri] :as request}]
+     (fn [{:keys [uri] :as request}]
        (let [route (route-for uri (:oscope-path app))
-             method (str/upper-case (name (or request-method :unknown)))
-             untraced? (or (otlp-receiver/telemetry-suppressed? request)
-                           (= route "/")
-                           (= route "/traces/:trace-id")
-                           (= route "/assets/otel-viewer.js")
-                           (= route "/workbench")
-                           (= route "/assets/workbench.js")
-                           (contains? #{(:oscope-path app)
-                                        (oscope-web/export-path
-                                         (:oscope-path app))}
-                                      route)
-                           (contains? editor-paths route)
-                           (contains? #{"/agent-work"
-                                        "/agent-work-with-response"
-                                        "/agent-work-intervention"} route)
-                           (str/starts-with? route "/api/"))
-             telemetry-storage-route?
-             (and (= :get request-method)
-                  (or (= route "/")
-                      (= route "/traces/:trace-id")
-                      (str/starts-with? route "/api/")
-                      (contains? #{(:oscope-path app)
-                                   (oscope-web/export-path (:oscope-path app))}
-                                 route)))
-             response (if untraced?
-                        (if telemetry-storage-route?
-                          (context/with-instrumentation-suppressed
-                            (dispatch request))
+             response (cond
+                        (telemetry-storage-route? app request route)
+                        (context/with-instrumentation-suppressed
                           (dispatch request))
-                        (let [parent (propagation/extract propagator context/root
-                                                          (or (:headers request) {}))]
-                          (trace/with-span [span tracer (str "HTTP " method " " route)
-                                            {:kind :server
-                                             :parent parent
-                                             :attributes {:http.request.method method
-                                                          :http.route route :url.path uri}}]
-                            (let [response (dispatch request) status (:status response)]
-                              (trace/set-attribute! span :http.response.status_code status)
-                              (when (>= status 500)
-                                (trace/set-status! span :error (str "HTTP " status)))
-                              response))))]
+
+                        (or (server-instrumentation-excluded? app request)
+                            (http-server-instrumentation/active?))
+                        (dispatch request)
+
+                        :else
+                        (source-http-fallback app dispatch request route))]
            (when (::flush? response)
-             ((:flush-fn app)))
+             ;; A woven generic server span ends in jolt-http's accepted
+             ;; response callback, after this application handler returns.
+             ;; Its provider-owned completion hook flushes that final span.
+             ;; Plain/source fallback spans have already ended here.
+             (when-not (http-server-instrumentation/active?)
+               ((:flush-fn app))))
            (dissoc response ::flush?))))))
 
 (defn- env-port []
@@ -926,9 +966,20 @@
                                    :oscope-path oscope-path
                                    :workbench-adapter workbench-adapter
                                    :workbench-kind workbench-kind})
-                 server (http-server/run-server (handler app) :port port
-                                                :server-name "127.0.0.1"
-                                                :reuse-address? true)
+                 server (http-server/run-server
+                         (handler app)
+                         :port port
+                         :server-name "127.0.0.1"
+                         :reuse-address? true
+                         :otel.instrumentation.http-server/exclude?
+                         #(server-instrumentation-excluded? app %)
+                         :otel.instrumentation.http-server/route
+                         #(route-for (:uri %) (:oscope-path app))
+                         :otel.instrumentation.http-server/capture-network-addresses?
+                         false
+                         :otel.instrumentation.http-server/on-end
+                         #(context/with-instrumentation-suppressed
+                            ((:flush-fn app))))
                  lifecycle-state (atom :open)
                  front-stopped? (atom false)
                  stop-lock (Object.)

@@ -10,6 +10,7 @@
   binds a bounded content-capture policy."
   (:require [clojure.string :as str]
             [demo.aspect-journal :as journal]
+            [otel.context :as context]
             [otel.propagation :as propagation]
             [otel.sdk :as sdk]
             [otel.trace :as trace]))
@@ -77,14 +78,40 @@
   (when-let [s (enum-name value)]
     (if (> (count s) 128) (subs s 0 128) s)))
 
+(defn- indexed-messages [messages]
+  (mapv (fn [index message]
+          {:index index
+           :message message})
+        (range)
+        messages))
+
+(defn- capture-order
+  "Lead a bounded display with Samizdat's opening user task, then retain the
+  remaining messages in wire order. Original one-based indices make the
+  presentation order explicit instead of misrepresenting it as the request
+  sequence. This prevents a large system prompt from consuming the complete
+  capture budget before the user task appears."
+  [messages]
+  (let [indexed (indexed-messages messages)
+        first-user (first (filter #(= "user"
+                                       (bounded-name
+                                         (get-in % [:message :role])))
+                                  indexed))]
+    (if first-user
+      (into [first-user] (remove #(= (:index first-user) (:index %)) indexed))
+      indexed)))
+
 (defn- captured-messages [messages]
   (when (:capture? *content-policy*)
-    (captured
-      (str/join "\n\n"
-                (map (fn [message]
-                       (str (or (bounded-name (:role message)) "message")
-                            ": " (or (:content message) "")))
-                     messages)))))
+    (let [messages (vec messages)
+          total (count messages)]
+      (captured
+        (str/join "\n\n"
+                  (map (fn [{:keys [index message]}]
+                         (str "[message " (inc index) "/" total "] "
+                              (or (bounded-name (:role message)) "message")
+                              ": " (or (:content message) "")))
+                       (capture-order messages)))))))
 
 (defn- safe-id [value]
   (when (some? value)
@@ -273,7 +300,11 @@
                            without-stale-trace-context
                            (propagation/inject-current
                             propagation/trace-context))
-              result (proceed [url (assoc request :headers headers)])
+              ;; This specialized boundary omits the physical model endpoint.
+              ;; Suppress the generic lower-level HTTP-client aspect while
+              ;; preserving this span's explicitly injected Trace Context.
+              result (context/with-instrumentation-suppressed
+                       (proceed [url (assoc request :headers headers)]))
               status (:status result)]
           (when (number? status)
             (trace/set-attribute! span :http.response.status_code status)

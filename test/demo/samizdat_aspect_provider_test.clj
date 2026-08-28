@@ -6,6 +6,7 @@
             [demo.aspect-journal :as journal]
             [demo.samizdat-aspect-provider :as provider]
             [otel.exporter.memory :as memory]
+            [otel.instrumentation.http-client :as generic-http]
             [otel.propagation :as propagation]
             [otel.sdk :as sdk]
             [otel.trace :as trace]))
@@ -159,7 +160,7 @@
     (fn [exporter]
       (binding [provider/*content-policy*
                 (provider/content-policy
-                  {:capture? true :max-chars 24
+                  {:capture? true :max-chars 48
                    :redact #(str/replace % "private-model-host" "[host]")})]
         (provider/around
           (join-point :samizdat/model :samizdat.agent.infer/model)
@@ -175,13 +176,35 @@
             serialized (pr-str attrs)]
         (is (= "captured" (get attrs "samizdat.prompt.content_state")))
         (is (= "captured" (get attrs "samizdat.response.content_state")))
-        (is (<= (count prompt) 24))
-        (is (<= (count response) 24))
+        (is (<= (count prompt) 48))
+        (is (<= (count response) 48))
         (is (.contains prompt "[host]"))
         (is (.contains response "[host]"))
         (is (not (.contains serialized "private reasoning")))
         (is (not (.contains serialized "secret thought")))
         (is (not (.contains serialized "private-model-host")))))))
+
+(deftest bounded-model-capture-keeps-the-opening-user-task-visible
+  (with-memory-sdk
+    (fn [exporter]
+      (binding [provider/*content-policy*
+                (provider/content-policy
+                  {:capture? true :max-chars 160 :redact identity})]
+        (provider/around
+          (join-point :samizdat/model :samizdat.agent.infer/model)
+          [:adapter {:provider :local :model "fixture"}
+           [{:role "system" :content (apply str (repeat 512 "s"))}
+            {:role "user"
+             :content "Repair calc.square; proof nonce user-task-7f31c92b."}
+            {:role "assistant" :content "I will inspect the source."}]
+           {}]
+          (fn [] {:content "done" :finish-reason "stop"})))
+      (let [attrs (:attributes (first (memory/spans exporter)))
+            prompt (get attrs "samizdat.prompt.sanitized")]
+        (is (<= (count prompt) 160))
+        (is (.contains prompt "[message 2/3] user:"))
+        (is (.contains prompt "user-task-7f31c92b"))
+        (is (.contains prompt "[message 1/3] system:"))))))
 
 (deftest content-policy-is-bounded-and-fails-closed
   (is (= provider/default-content-policy
@@ -251,8 +274,18 @@
                               :traceparent "stale-keyword-parent"}
                     :body "private request body"}]
                   (fn [[url request]]
-                    (reset! observed {:url url :request request})
-                    response))))
+                    (let [suppressed? (atom nil)
+                          result
+                          (generic-http/around
+                           {:id :http-client.core/request
+                            :advice-role :http/client}
+                           [{:request-method :post}]
+                           (fn
+                             ([] (reset! suppressed? true) response)
+                             ([_] (reset! suppressed? false) response)))]
+                      (reset! observed {:url url :request request
+                                        :suppressed? @suppressed?})
+                      result)))))
             spans (memory/spans exporter)
             model (first (filter #(= "samizdat.model" (:name %)) spans))
             client (first (filter #(= "HTTP POST" (:name %)) spans))
@@ -260,6 +293,8 @@
             serialized (pr-str spans)]
         (is (identical? response actual))
         (is (= :client (:kind client)))
+        (is (true? (:suppressed? @observed))
+            "the privacy-specialized boundary suppresses generic HTTP advice")
         (is (= (get-in model [:span-context :span-id])
                (:parent-span-id client)))
         (is (= (get-in model [:span-context :trace-id])
@@ -275,15 +310,13 @@
                         "private request body" "private model response"]]
           (is (not (.contains serialized secret))))))))
 
-(deftest library-supplied-manifest-identifies-the-embed-source
+(deftest library-supplied-manifest-identifies-the-run-entry
   (let [manifest (-> "META-INF/jolt/aspects/samizdat-m2-embed.edn"
                      io/resource slurp edn/read-string)
         embed (first (filter #(= :samizdat.embed/beam-run (:id %))
                              (:aspects manifest)))]
     (is (= provider/samizdat-build-id (get-in manifest [:library :version])))
-    (is (= {:ns 'samizdat.embed
-            :call 'samizdat.agent.beam/run!
-            :arity 1}
+    (is (= {:entry 'samizdat.agent.beam/run! :arity 1}
            (:match embed)))
     (is (= {:matches 1} (:expect embed)))))
 

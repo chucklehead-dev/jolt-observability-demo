@@ -1,5 +1,6 @@
 .jolt/
 .jolt-cache/
+.cpcache/
 node_modules/
 playwright-report/
 test-results/

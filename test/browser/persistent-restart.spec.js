@@ -80,7 +80,7 @@ test("a browser-created trace survives a complete chDB process restart", async (
     await firstPage.getByRole("button", {name: "Generate work"}).click();
     await expect(traces).toHaveCount(before + 1);
     const durableTrace = traces.first();
-    await expect(durableTrace).toContainText("HTTP POST /work");
+    await expect(durableTrace).toContainText("POST /work");
     await expect(durableTrace).toContainText("5 spans");
     const tracePath = await durableTrace.getByRole("link").getAttribute("href");
     expect(tracePath).toMatch(/^\/traces\/[0-9a-f]{32}$/);

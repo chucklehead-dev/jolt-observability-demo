@@ -4,7 +4,7 @@
         {:local/root ".."}
         io.github.casselc/samizdat
         {:git/url "https://github.com/casselc/samizdat.git"
-         :git/sha "5949be3294bb9fd74669848ffa050cdcfd141458"}
+         :git/sha "cbb8f314fc09d37e9a613a7891f4febb6fce9181"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}}
@@ -18,6 +18,10 @@
              :provider demo.aspect-provider}
             {:resource "META-INF/jolt/aspects/db-jdbc-shim.edn"
              :provider otel.instrumentation.db}
+            {:resource "META-INF/jolt/aspects/http-client-core.edn"
+             :provider otel.instrumentation.http-client}
+            {:resource "META-INF/jolt/aspects/http-server.edn"
+             :provider otel.instrumentation.http-server}
             {:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
              :provider demo.samizdat-aspect-provider}
             {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"

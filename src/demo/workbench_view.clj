@@ -152,12 +152,16 @@
        ".workbench-history li{padding:.5rem 0}"
        ".workbench-history li+li{border-top:1px solid var(--otel-border)}"))
 
-(defn- prompt-form [adapter-kind]
+(def ^:private default-prompt
+  "Repair the SSE reconnect race without replaying delivered rows.")
+
+(defn- prompt-form [adapter-kind current]
   (str "<form method=\"post\" action=\"/workbench\" class=\"workbench-form\">"
        "<label for=\"workbench-prompt\">Prompt</label>"
        "<textarea id=\"workbench-prompt\" name=\"prompt\" maxlength=\""
        max-prompt-input "\" required>"
-       "Repair the SSE reconnect race without replaying delivered rows."
+       (escape-html
+         (bounded (or (:prompt current) default-prompt) max-prompt-input))
        "</textarea>"
        "<button type=\"submit\">Run</button>"
        "</form>"
@@ -196,7 +200,8 @@
        "<nav><a class=\"otel-back-link\" href=\"/\">← All traces</a></nav>"
        "</header>"
        "<section><h2>Start a run</h2>"
-       (prompt-form (:adapter-kind state-value)) "</section>"
+       (prompt-form (:adapter-kind state-value) (:current state-value))
+       "</section>"
        "<div id=\"workbench-live\" data-workbench-live=\"true\">"
        (render-live state-value)
        "</div>"

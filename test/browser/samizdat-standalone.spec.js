@@ -104,27 +104,44 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
   const byId = new Map(detail.spans.map((span) => [span.spanId, span]));
   const roots = detail.spans.filter((span) => span.name === "samizdat.run" && !span.parentSpanId);
   const turns = detail.spans.filter((span) => span.name === "samizdat.turn");
-  const leaves = detail.spans.filter((span) =>
-    span.name === "samizdat.model" || span.name === "samizdat.tool");
+  const models = detail.spans.filter((span) => span.name === "samizdat.model");
+  const tools = detail.spans.filter((span) => span.name === "samizdat.tool");
+  const leaves = [...models, ...tools];
   const clients = detail.spans.filter((span) =>
     span.name === "HTTP POST" && span.kind === "client");
+  const duplicateGenericClients = detail.spans.filter((span) =>
+    span.name === "POST" && span.kind === "client");
+  const databases = detail.spans.filter((span) =>
+    ["SELECT", "INSERT", "UPDATE", "DELETE"].includes(span.name) &&
+    JSON.stringify(span.attributes).includes("sqlite"));
   expect(roots).toHaveLength(1);
   expect(turns.length).toBeGreaterThan(0);
   expect(leaves.length).toBeGreaterThan(0);
   expect(clients.length).toBeGreaterThan(0);
+  expect(duplicateGenericClients).toHaveLength(0);
+  expect(databases.length).toBeGreaterThan(0);
 
   for (const turn of turns) {
     expect(ancestors(turn, byId).some((span) => span.name === "samizdat.run")).toBe(true);
   }
   for (const leaf of leaves) {
     const chain = ancestors(leaf, byId);
-    expect(chain.some((span) => span.name === "samizdat.turn")).toBe(true);
     expect(chain.some((span) => span.name === "samizdat.run")).toBe(true);
   }
+  for (const tool of tools) {
+    expect(ancestors(tool, byId)
+      .some((span) => span.name === "samizdat.turn")).toBe(true);
+  }
+  expect(models.some((model) => ancestors(model, byId)
+    .some((span) => span.name === "samizdat.turn"))).toBe(true);
 
   for (const client of clients) {
     const chain = ancestors(client, byId);
     expect(chain.some((span) => span.name === "samizdat.run")).toBe(true);
+  }
+  for (const database of databases) {
+    expect(ancestors(database, byId)
+      .some((span) => span.name === "samizdat.run")).toBe(true);
   }
 
   const proof = await json(await request.get(`${modelFixtureUrl}/proof`));
@@ -150,8 +167,21 @@ test("the standalone Samizdat loop updates live and stores its real span tree", 
     expect(proof.traceparents).toContain(traceparent);
   }
   const storedTrace = JSON.stringify(detail);
+  expect(detail.spans.some((span) =>
+    span.attributes?.["server.address"] === "127.0.0.1")).toBe(false);
   expect(storedTrace).not.toContain(prompt);
   expect(storedTrace).not.toContain("Fixed square and verified its regression test.");
+
+  await page.locator(".otel-header a.otel-back-link[href=\"/\"]").click();
+  await expect(page).toHaveURL(/\/$/);
+  const traceLink = page.locator(`a[href="/traces/${summary.traceId}"]`).first();
+  await expect(traceLink).toBeVisible();
+  await traceLink.click();
+  const dialog = page.locator("dialog[data-otel-dialog]");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("samizdat.run");
+  await expect(dialog).toContainText("samizdat.model");
+  await expect(dialog).toContainText("SELECT");
 
   assertNoBrowserErrors();
 });

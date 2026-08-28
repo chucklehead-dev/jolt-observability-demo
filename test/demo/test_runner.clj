@@ -6,6 +6,8 @@
             [demo.plotje-portable-test]
             [demo.portable-editors-test]
             [demo.property-test :as property]
+            [demo.samizdat-adapter-test]
+            [demo.samizdat-aspect-provider-test]
             [demo.workbench-test]))
 
 (defn -main [& _]
@@ -14,6 +16,8 @@
                                'demo.aspect-journal-test
                                'demo.plotje-portable-test
                                'demo.portable-editors-test
+                               'demo.samizdat-adapter-test
+                               'demo.samizdat-aspect-provider-test
                                'demo.workbench-test)
         properties (property/run-properties!)
         _ (doseq [{:keys [label result]} properties]

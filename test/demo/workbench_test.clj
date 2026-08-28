@@ -129,6 +129,17 @@
     (is (str/includes? samizdat-page "your exact submitted prompt drives"))
     (is (str/includes? samizdat-page "compiler-selected aspects"))))
 
+(deftest workbench-page-keeps-the-submitted-prompt-in-the-run-form
+  (let [prompt "Repair calc.square & verify <the regression>."
+        page (view/render-page {:current {:prompt prompt}
+                                :history []
+                                :adapter-kind :samizdat})]
+    (is (str/includes? page
+                       "Repair calc.square &amp; verify &lt;the regression&gt;."))
+    (is (not (str/includes?
+               page
+               "Repair the SSE reconnect race without replaying delivered rows.")))))
+
 (deftest async-workbench-passes-the-exact-prompt-and-applies-live-callbacks
   (let [submitted (atom nil)
         callbacks* (atom nil)

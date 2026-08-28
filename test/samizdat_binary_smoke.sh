@@ -72,5 +72,8 @@ curl --noproxy '*' -fsS -X POST \
 test -s "$repo/target/samizdat-aspects.edn"
 grep -q ':samizdat.embed/beam-run' "$repo/target/samizdat-aspects.edn"
 grep -q ':samizdat.agent.infer/model' "$repo/target/samizdat-aspects.edn"
+grep -q ':http-client.core/request' "$repo/target/samizdat-aspects.edn"
+grep -q ':http/server-ring-handler' "$repo/target/samizdat-aspects.edn"
+grep -q ':http/server-sanitized-response' "$repo/target/samizdat-aspects.edn"
 
 echo "PASS: woven standalone Samizdat viewer and editors"
