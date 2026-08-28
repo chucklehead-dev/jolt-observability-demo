@@ -100,15 +100,38 @@
          (apply str (map history-item (take max-history-rendered history)))
          "</ol>")))
 
+(defn- observation-section [observations]
+  (str "<section class=\"workbench-observations\">"
+       "<h2>Aspect observation journal</h2>"
+       "<p class=\"otel-content-note\">Optional, bounded, and content-free; "
+       "it is never application state.</p>"
+       (if (seq observations)
+         (str "<ol class=\"workbench-events\">"
+              (apply str
+                     (map (fn [{:keys [seq role phase parent-operation-id]}]
+                            (str "<li class=\"workbench-event\"><code>#"
+                                 (escape-html seq) "</code> "
+                                 (escape-html (name role)) " · "
+                                 (escape-html (name phase))
+                                 (when parent-operation-id
+                                   (str " · parent #"
+                                        (escape-html parent-operation-id)))
+                                 "</li>"))
+                          observations))
+              "</ol>")
+         "<p class=\"otel-empty\">Disabled in this plain build.</p>")
+       "</section>"))
+
 (defn render-live
   "The `#workbench-live` fragment: the current run plus bounded run history.
   Used both to seed the initial page and as the Datastar SSE patch payload."
-  [{:keys [current history]}]
+  [{:keys [current history observations]}]
   (str "<section aria-live=\"polite\" class=\"workbench-run\">"
        "<h2>Current run</h2>"
        (run-section current)
        "</section>"
-       (or (history-section history) "")))
+       (or (history-section history) "")
+       (observation-section observations)))
 
 (def ^:private page-styles
   (str ".workbench-events{list-style:none;margin:.75rem 0;padding:0}"

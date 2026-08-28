@@ -3,5 +3,6 @@
 node_modules/
 playwright-report/
 test-results/
+/target/
 docs/screenshots/test-artifacts/
 docs/screenshots/agent-gif-artifacts/

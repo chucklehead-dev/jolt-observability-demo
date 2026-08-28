@@ -92,6 +92,19 @@ machine, or rendering layer.
 instrumentation the same way `/`, `/traces/*`, and the agent-demo routes are,
 so viewing or driving the workbench cannot feed telemetry back into itself.
 
+The page also demonstrates a second, non-OTel aspect consumer. A plain Jolt
+build shows the bounded observation journal as disabled. With the experimental
+compiler-aspect build, the library-owned workbench manifest selects the
+semantic `:agent/run` join point and `demo.aspect-provider` records enter/return
+ordering without retaining prompts, responses, exception messages, or host
+names. The journal is display-only and is never consulted by the run state
+machine.
+
+```sh
+JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
+  test/aspect_build_smoke.sh
+```
+
 ## Receive OTLP
 
 The server accepts OTLP/HTTP JSON on:

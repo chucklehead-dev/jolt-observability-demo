@@ -1,0 +1,10 @@
+{:schema 1
+ :library {:id chucklehead-dev/jolt-observability-demo
+           :version "f4a730b2d80e9d94fa1a8d99093fb585584ea89d"}
+ :aspects
+ [{:id :demo.workbench/run-script
+   :match {:ns demo.workbench
+           :call demo.workbench-fixture/run-script
+           :arity 2}
+   :advice-role :agent/run
+   :expect {:matches 1}}]}

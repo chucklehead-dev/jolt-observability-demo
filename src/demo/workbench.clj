@@ -13,6 +13,7 @@
   default)."
   (:require [clojure.core.async :as async]
             [clojure.string :as str]
+            [demo.aspect-provider :as aspect-provider]
             [demo.workbench-fixture :as fixture]
             [demo.workbench-view :as view]
             [glimmer.ratom :as ratom]
@@ -176,8 +177,11 @@
         (when-not (peer-disconnect? error) (throw error)))
       (finally (async/close! ch)))))
 
+(defn- view-state [state]
+  (assoc @(:ratom state) :observations (aspect-provider/snapshot)))
+
 (defn- fragment-handler [state]
-  (fn [_request] {:status 200 :body (view/render-live @(:ratom state))}))
+  (fn [_request] {:status 200 :body (view/render-live (view-state state))}))
 
 (defn- sse-response [state request]
   (let [handler (datastar/wrap-datastar (fragment-handler state)
@@ -193,7 +197,7 @@
   (if (sse-request? request)
     (sse-response state request)
     {:status 200 :headers page-headers
-     :body (view/render-page @(:ratom state))}))
+     :body (view/render-page (view-state state))}))
 
 (defn- concat-chunks [chunks total]
   (let [out (byte-array total)]

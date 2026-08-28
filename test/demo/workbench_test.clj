@@ -92,6 +92,11 @@
     (is (= 1 (count (re-seq #"<script" page)))
         "the only real <script> tag is the static asset include")))
 
+(deftest plain-workbench-explains-that-the-aspect-journal-is-disabled
+  (let [html (view/render-live {:current nil :history [] :observations []})]
+    (is (str/includes? html "Aspect observation journal"))
+    (is (str/includes? html "Disabled in this plain build."))))
+
 (deftest workbench-history-hides-the-response-of-an-interrupted-run
   (let [interrupted {:prompt "first" :status :running :response "should not leak"}
         html (view/render-live {:current nil :history [interrupted]})]

@@ -28,7 +28,10 @@
         {:git/url "https://github.com/casselc/data.json.git"
          :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}}
 
- :jolt/build {:embed ["resources"]}
+ :jolt/build {:embed ["resources"]
+              :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
+                         :provider demo.aspect-provider}]
+              :aspect-report "target/aspects.edn"}
 
  :aliases {:setup-native {:main-opts ["-m" "jdbc.chdb.install"]}
            :test {:extra-paths ["test"]
