@@ -12,5 +12,5 @@
 (def aspect-provider
   {:schema 1
    :libraries {'chucklehead-dev/jolt-observability-demo
-               "f4a730b2d80e9d94fa1a8d99093fb585584ea89d"}
+               "9840fbb3245211bbecf3098777403b2b30678e1d"}
    :roles {:agent/run 'demo.aspect-provider/around}})
