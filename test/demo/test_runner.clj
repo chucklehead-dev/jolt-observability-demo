@@ -1,11 +1,14 @@
 (ns demo.test-runner
   (:require [clojure.test :as test]
+            [demo.aspect-journal-test]
             [demo.main-test]
             [demo.property-test :as property]
             [demo.workbench-test]))
 
 (defn -main [& _]
-  (let [result (test/run-tests 'demo.main-test 'demo.workbench-test)
+  (let [result (test/run-tests 'demo.main-test
+                               'demo.aspect-journal-test
+                               'demo.workbench-test)
         properties (property/run-properties!)
         _ (doseq [{:keys [label result]} properties]
             (println "Hegel" label "seed" (:seed result)
