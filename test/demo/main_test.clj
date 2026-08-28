@@ -17,6 +17,7 @@
             [otel.sdk :as sdk]
             [otel.viewer :as viewer]
             [oscope.live :as oscope]
+            [oscope.ui.events :as oscope-events]
             [oscope.ui.workbench :as oscope-workbench]
             [oscope.ui.web :as oscope-web]
             [teensyp.ffi-net :as net]))
@@ -127,6 +128,26 @@
                 app {:request-method :get :uri route})))
     (is (= 210 (:status (h {:request-method :get :uri route}))))
     (is (= [[route true]] @seen))))
+
+(deftest extracted-oscope-event-routes-are-mounted-and-suppressed
+  (let [seen (atom [])
+        routes [oscope-events/default-path
+                (str oscope-events/default-path "/refresh")
+                (str oscope-events/default-path "/live.js")]
+        app (assoc (test-app)
+                   :oscope-events-handler
+                   (fn [request]
+                     (swap! seen conj
+                            [(:uri request)
+                             (context/instrumentation-suppressed?)])
+                     {:status 211 :headers {} :body "events"}))
+        h (demo/handler app)]
+    (doseq [route routes]
+      (is (= route (demo/route-for route)))
+      (is (true? (demo/server-instrumentation-excluded?
+                  app {:request-method :get :uri route})))
+      (is (= 211 (:status (h {:request-method :get :uri route})))))
+    (is (= (mapv #(vector % true) routes) @seen))))
 
 (deftest agent-demo-routes-select-content-capture-without-http-wrapper-spans
   (let [calls (atom [])

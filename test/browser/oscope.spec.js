@@ -140,7 +140,8 @@ test("the extracted oscope workbench filters traces, opens detail, and refreshes
   await page.goto("/oscope/telemetry?window=1h");
   await expect(page.getByRole("heading", {name: "Telemetry workbench"})).toBeVisible();
   await expect(page.getByRole("heading", {name: "Find traces"})).toBeVisible();
-  await expect(page.getByRole("link", {name: "Logs, metrics & charts"})).toHaveAttribute("href", "/oscope");
+  await expect(page.getByRole("link", {name: "Logs & metrics"})).toHaveAttribute("href", "/oscope/events");
+  await expect(page.getByRole("link", {name: "Charts & distributions"})).toHaveAttribute("href", "/oscope");
 
   const traces = page.locator(".otel-trace-list > li");
   const before = await traces.count();
@@ -169,5 +170,45 @@ test("the extracted oscope workbench filters traces, opens detail, and refreshes
   await request.post("/work");
   await expect(page.locator(".otel-trace-list > li"), {timeout: 15_000})
     .toHaveCount(unfiltered + 1);
+  assertNoBrowserErrors();
+});
+
+test("the raw event explorer searches logs, links traces, and streams metric points", async ({page, request}) => {
+  const assertNoBrowserErrors = guardBrowserErrors(page);
+  const generated = await request.post("/work");
+  expect(generated.ok()).toBeTruthy();
+
+  await page.goto("/oscope/events?signal=logs&search=propagated&window=1h&limit=20");
+  await expect(page.getByRole("heading", {name: "Telemetry events"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Log records"})).toBeVisible();
+  await expect(page.getByText("processed propagated demo job").first()).toBeVisible();
+  const traceLink = page.locator("#oscope-events tbody a").first();
+  await expect(traceLink).toHaveAttribute("href", /\/oscope\/telemetry\/traces\/[0-9a-f]{32}/);
+  await traceLink.click();
+  await expect(page.getByRole("heading", {name: "Trace detail"})).toBeVisible();
+  await expect(page.getByRole("link", {name: "← All traces"})).toHaveAttribute("href", "/oscope/telemetry");
+
+  const emitGauge = async (value) => {
+    const now = BigInt(Date.now()) * 1_000_000n;
+    const response = await request.post("/v1/metrics", {data: {
+      resourceMetrics: [{
+        resource: {attributes: [{key: "service.name", value: {stringValue: "browser-worker"}}]},
+        scopeMetrics: [{scope: {name: "oscope.browser"}, metrics: [{
+          name: "browser.queue.depth", unit: "1",
+          gauge: {dataPoints: [{timeUnixNano: now.toString(), asInt: String(value)}]},
+        }]}],
+      }],
+    }});
+    expect(response.ok()).toBeTruthy();
+  };
+
+  await emitGauge(3);
+  await page.goto("/oscope/events?signal=metrics&service=browser-worker&metric-kind=gauge&search=queue.depth&window=15m&limit=20");
+  await expect(page.getByRole("heading", {name: "Metric points"})).toBeVisible();
+  await expect(page.getByText("browser.queue.depth")).toBeVisible();
+  const rows = page.locator("#oscope-events tbody tr");
+  const before = await rows.count();
+  await emitGauge(4);
+  await expect(rows, {timeout: 15_000}).toHaveCount(before + 1);
   assertNoBrowserErrors();
 });

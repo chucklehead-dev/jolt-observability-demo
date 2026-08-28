@@ -29,7 +29,7 @@
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
         io.github.chucklehead-dev/oscope
         {:git/url "https://github.com/chucklehead-dev/oscope.git"
-         :git/sha "e46414112bb2b1a7bb35e532dd44265573038a4e"}
+         :git/sha "bd197ac1973614d0ca45937064e666dc38b0bf81"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}

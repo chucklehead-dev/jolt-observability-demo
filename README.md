@@ -199,6 +199,12 @@ trees, span events, correlated logs, and live static-first refresh. The demo
 supplies only its Samizdat Kindly adviser at the rendering boundary; oscope
 itself contains no agent-specific vocabulary.
 
+Open `/oscope/events` for the sibling raw event explorer. Logs can be filtered
+by service, body text, severity, window, and row limit, with trace IDs linking
+back to full detail. Metric points can be filtered by service, metric name,
+gauge/sum/histogram kind, window, and limit. This remains a closed,
+parameterized query surface rather than a free-form SQL endpoint.
+
 Open `/oscope/edit/plotje` for the bounded Plotje/grammar-of-graphics editor and
 `/oscope/edit/hiccup` for the safe Hiccup widget editor. Both are supplied by
 the same mountable oscope visualization-document boundary, server-rendered
