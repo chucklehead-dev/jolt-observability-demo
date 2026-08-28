@@ -58,6 +58,15 @@ POST/303 redirect, a trace link navigates to its full detail page, and **All
 traces** returns to the index. This keeps the static HTML contract executable
 instead of treating progressive enhancement as the only application.
 
+## 6. Explore and export without feedback
+
+Open `/oscope` with JavaScript disabled, run a bounded log distribution, then
+submit the raw span export form with 19-digit Unix-nanosecond bounds. The
+browser downloads a filename derived only from the closed selection and the
+body begins with the Parquet `PAR1` signature. The complete trace, span, log,
+and error summary remains byte-for-byte equivalent before and after viewing,
+querying, and downloading, so the utility cannot recursively observe itself.
+
 ## Future beats
 
 - Build the demo with selected instrumentation aspects and prove the generated
@@ -79,10 +88,11 @@ An optional live storyboard calls an OpenAI-compatible Lemonade server. The
 first trace retains only model, latency, finish reason, token usage, and
 control-loop structure. The second explicitly stores both the bounded prompt
 and assistant response after common delimited thinking output is stripped. The
-third runs two model turns: a controller rejects an evocative but mechanically
-vague answer, supplies a concrete live-stream diagnosis, and the agent revises
-its response. Physical model hostnames, credentials, and tool arguments remain
-absent in every mode; provider thinking is disabled by default.
+third runs two model turns on a concrete coding task: a controller rejects a
+cursor-reset patch because it would replay delivered rows, supplies the missing
+SSE reconnect invariants, and the agent revises the patch and race test.
+Physical model hostnames, credentials, and tool arguments remain absent in
+every mode; provider thinking is disabled by default.
 
 Run it with an endpoint reachable from the demo process and a neutral telemetry
 display address so private hostnames never enter checked-in screenshots:

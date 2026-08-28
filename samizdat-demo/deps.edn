@@ -1,0 +1,28 @@
+{:paths []
+
+ :deps {local/jolt-observability-demo
+        {:local/root ".."}
+        io.github.casselc/samizdat
+        {:git/url "https://github.com/casselc/samizdat.git"
+         :git/sha "35b01fddd20fa9e6d77678eadc2a2bcc6fb9ac2d"}
+        io.github.chucklehead-dev/jolt-otel-viewer
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
+         :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}}
+
+ ;; A standalone build embeds both applications' data resources and activates
+ ;; both independently revisioned aspect manifests. The enclosing demo remains
+ ;; local while it is the application being built; library inputs are exact.
+ :jolt/build
+ {:embed ["../resources" "../../samizdat-embed-aspects/resources"]
+  :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
+             :provider demo.aspect-provider}
+            {:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
+             :provider demo.samizdat-aspect-provider}
+            {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"
+             :provider demo.samizdat-aspect-provider}]
+  :aspect-report "../target/samizdat-aspects.edn"}
+
+ :aliases {:test {:extra-paths ["../test"]}}
+
+ :tasks {run {:main-opts ["-m" "demo.samizdat-main"]}
+         build "jolt build -m demo.samizdat-main -o ../target/samizdat-observability-demo"}}

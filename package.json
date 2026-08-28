@@ -6,6 +6,8 @@
   },
   "scripts": {
     "test:browser": "playwright test --project=chromium",
+    "test:browser:samizdat": "test/samizdat_playwright_e2e.sh",
+    "test:browser:aspect": "test/aspect_demo_e2e.sh",
     "test:browser:persistent": "scripts/test-browser-persistent.sh",
     "test:browser:restart": "playwright test --config=playwright.restart.config.js",
     "docs:screenshots": "playwright test --project=docs",

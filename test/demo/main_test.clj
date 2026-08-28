@@ -15,6 +15,7 @@
             [otel.sdk.export :as export]
             [otel.sdk :as sdk]
             [otel.viewer :as viewer]
+            [oscope.live :as oscope]
             [teensyp.ffi-net :as net]))
 
 (def sample-summary {:traceCount 1 :spanCount 2 :logCount 1 :errorCount 0})
@@ -257,6 +258,11 @@
          "kind" 3
          "startTimeUnixNano" "1785609674782645000"
          "endTimeUnixNano" "1785609674784645000"
+         "events" [{"timeUnixNano" "1785609674783645000"
+                     "name" "exception"
+                     "attributes"
+                     [{"key" "exception.type"
+                       "value" {"stringValue" "example.SafeFailure"}}]}]
          "status" {"code" 1}}]}]}]})
 
 (defn- chunked-request-body [chunks]
@@ -653,6 +659,60 @@
         (deref reader 2000 nil)
         (demo/stop! lifecycle)))))
 
+(deftest lifecycle-retries-ingress-stop-before-closing-owned-state
+  (let [port (next-live-test-port)
+        lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
+        real-stop http-server/stop-server
+        attempts (atom 0)]
+    (try
+      (with-redefs [http-server/stop-server
+                    (fn [server]
+                      (if (= 1 (swap! attempts inc))
+                        (throw (ex-info "injected ingress stop timeout" {}))
+                        (real-stop server)))]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #"injected ingress stop timeout"
+                              (demo/stop! lifecycle)))
+        (is (false? @(:closed? (:oscope-source lifecycle)))
+            "an unconfirmed ingress stop leaves oscope callbacks live")
+        (is (= [{:answer 1}]
+               (jdbc/fetch (:connection lifecycle) "select 1 as answer")))
+        (is (= :closed (:status (demo/stop! lifecycle)))
+            "a retry confirms ingress stopped before closing the database")
+        (is (true? @(:closed? (:oscope-source lifecycle))))
+        (is (= 2 @attempts)))
+      (finally (demo/stop! lifecycle)))))
+
+(deftest lifecycle-retires-shared-oscope-before-sdk-and-connection
+  (let [port (next-live-test-port)
+        events (atom [])
+        lifecycle (demo/start!
+                   {:port port :db-spec "chdb::memory:"
+                    :workbench-source-close!
+                    (fn [] (swap! events conj :workbench-source)
+                      {:status :closed})})
+        real-oscope-close oscope/close!
+        real-sdk-shutdown sdk/shutdown!]
+    (try
+      (with-redefs
+        [oscope/close!
+         (fn [source]
+           (swap! events conj :oscope)
+           (real-oscope-close source))
+         sdk/shutdown!
+         (fn [handle]
+           (swap! events conj :sdk)
+           (is (true? @(:closed? (:oscope-source lifecycle))))
+           (is (= [{:answer 1}]
+                  (jdbc/fetch (:connection lifecycle) "select 1 as answer"))
+               "the shared connection remains open while oscope retires")
+           (real-sdk-shutdown handle))]
+        (is (= :closed (:status (demo/stop! lifecycle)))))
+      (is (= [:workbench-source :oscope :sdk] @events))
+      (is (thrown? Throwable
+                   (jdbc/fetch (:connection lifecycle) "select 1 as answer")))
+      (finally (demo/stop! lifecycle)))))
+
 (deftest live-loopback-integration
   (let [port (+ 24000 (rand-int 3000))
         lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
@@ -906,7 +966,7 @@
           (is (not (str/includes? html-omitted "bounded sanitized answer")))
           (is (str/includes? html-intervention ">Intervention</span>"))
           (is (str/includes? html-intervention
-                             "answer lacked a concrete telemetry mechanism"))
+                             "first draft required a concrete correctness review"))
           (is (str/includes? html-intervention "Controller intervention:"))
           (is (str/includes? html-intervention "revised controlled answer"))))
       (finally (demo/stop! lifecycle)))))
@@ -987,6 +1047,7 @@
                               (str base "/api/traces/" otlp-trace-id)))
               tree (:spanTree detail)
               root (first tree)
+              child (first (:children root))
               page (http-client/get (str base "/traces/" otlp-trace-id))]
           (is (= {:traceCount 1 :spanCount 2 :logCount 0 :errorCount 0}
                  summary)
@@ -995,6 +1056,8 @@
           (is (= 2 (:spanCount trace-summary)))
           (is (= otlp-root-span-id (:spanId root)))
           (is (= [otlp-child-span-id] (mapv :spanId (:children root))))
+          (is (= "exception" (get-in child [:events 0 :name]))
+              "trace detail retains bounded span events for diagnostics")
           (is (= 200 (:status page)))
           (is (str/includes? (:body page) "ingest-root"))
           (is (str/includes? (:body page) "ingest-child"))))

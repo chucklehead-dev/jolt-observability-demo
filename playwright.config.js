@@ -5,6 +5,8 @@ const baseURL = `http://127.0.0.1:${port}`;
 const joltCommand = process.env.JOLT_WRAPPER
   ? `${process.env.JOLT_WRAPPER} jolt`
   : "jolt";
+const demoServerCommand = process.env.DEMO_SERVER_COMMAND ||
+  `${joltCommand} -m demo.main`;
 
 module.exports = defineConfig({
   testDir: "test/browser",
@@ -22,7 +24,7 @@ module.exports = defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: `${joltCommand} -m demo.main`,
+    command: demoServerCommand,
     url: `${baseURL}/api/summary`,
     timeout: 120_000,
     reuseExistingServer: false,
@@ -35,7 +37,7 @@ module.exports = defineConfig({
   projects: [
     {
       name: "chromium",
-      testMatch: /workbench\.spec\.js/,
+      testMatch: /(workbench|editors|oscope)\.spec\.js/,
       use: {...devices["Desktop Chrome"]},
     },
     {

@@ -76,7 +76,7 @@
          "<p><strong>Status:</strong> "
          (escape-html (name (or (:status run) "unknown"))) "</p>"
          (events-list (:events run))
-         (if (= :closed (:status run))
+         (if (contains? #{:closed :failed} (:status run))
            (str "<div class=\"otel-content\"><strong>Terminal response</strong>"
                 "<pre>" (escape-html (bounded (:response run)
                                               max-response-display))
@@ -88,7 +88,7 @@
 (defn- history-item [run]
   (str "<li><strong>" (escape-html (bounded (:prompt run) 80)) "</strong>"
        "<small>"
-       (if (= :closed (:status run))
+       (if (contains? #{:closed :failed} (:status run))
          (escape-html (bounded (:response run) 160))
          "interrupted before completion")
        "</small></li>"))
@@ -108,7 +108,8 @@
        (if (seq observations)
          (str "<ol class=\"workbench-events\">"
               (apply str
-                     (map (fn [{:keys [seq role phase parent-operation-id]}]
+                     (map (fn [{:keys [seq role phase parent-operation-id
+                                      exception-type]}]
                             (str "<li class=\"workbench-event\"><code>#"
                                  (escape-html seq) "</code> "
                                  (escape-html (name role)) " · "
@@ -116,6 +117,8 @@
                                  (when parent-operation-id
                                    (str " · parent #"
                                         (escape-html parent-operation-id)))
+                                 (when exception-type
+                                   (str " · " (escape-html exception-type)))
                                  "</li>"))
                           observations))
               "</ol>")
@@ -149,18 +152,28 @@
        ".workbench-history li{padding:.5rem 0}"
        ".workbench-history li+li{border-top:1px solid var(--otel-border)}"))
 
-(defn- prompt-form []
+(defn- prompt-form [adapter-kind]
   (str "<form method=\"post\" action=\"/workbench\" class=\"workbench-form\">"
        "<label for=\"workbench-prompt\">Prompt</label>"
        "<textarea id=\"workbench-prompt\" name=\"prompt\" maxlength=\""
        max-prompt-input "\" required>"
-       "Diagnose why the embedded telemetry dashboard stays stale."
+       "Repair the SSE reconnect race without replaying delivered rows."
        "</textarea>"
        "<button type=\"submit\">Run</button>"
        "</form>"
-       "<p class=\"otel-content-note\">This runs a deterministic local "
-       "fixture shaped like Samizdat's event vocabulary. It does not call a "
-       "real model or a real Samizdat run.</p>"))
+       "<p class=\"otel-content-note\">"
+       (case adapter-kind
+         :samizdat
+         (str "Samizdat mode: your exact submitted prompt drives the real "
+              "embedded harness. Durable run events update this page while "
+              "compiler-selected aspects trace model and tool operations; "
+              "the physical endpoint is not recorded.")
+         :custom
+         "Injected adapter mode: your exact prompt is passed to the application adapter."
+         (str "Offline fixture mode: this replays one fixed SSE reconnect "
+              "coding scenario and uses your prompt only as the run label. "
+              "Run the Samizdat entrypoint to execute submitted prompts."))
+       "</p>"))
 
 (defn render-page
   "The complete standalone /workbench document. `state-value` is the plain map
@@ -174,11 +187,16 @@
        "<style>" (viewer/styles) page-styles "</style></head><body>"
        "<main class=\"otel-viewer\">"
        "<header class=\"otel-header\"><div>"
-       "<p class=\"otel-eyebrow\">Samizdat-shaped fixture · local, offline</p>"
+       "<p class=\"otel-eyebrow\">"
+       (if (= :samizdat (:adapter-kind state-value))
+         "Real Samizdat run · compiler-woven telemetry"
+         "Samizdat-shaped fixture · local, offline")
+       "</p>"
        "<h1>Run workbench</h1></div>"
        "<nav><a class=\"otel-back-link\" href=\"/\">← All traces</a></nav>"
        "</header>"
-       "<section><h2>Start a run</h2>" (prompt-form) "</section>"
+       "<section><h2>Start a run</h2>"
+       (prompt-form (:adapter-kind state-value)) "</section>"
        "<div id=\"workbench-live\" data-workbench-live=\"true\">"
        (render-live state-value)
        "</div>"

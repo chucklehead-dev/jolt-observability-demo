@@ -53,6 +53,8 @@ Configuration is optional:
 
 - `DEMO_PORT` selects the listening port (default `8080`).
 - `DEMO_CHDB_SPEC` selects the chDB database (default `chdb::memory:`).
+- `DEMO_OSCOPE_PATH` mounts the embeddable explorer and its derived export
+  route (default `/oscope` and `/oscope/export`).
 - `JOLT_CHDB_LIB` selects an existing `libchdb` installation.
 - `JOLT_CHDB_CACHE_DIR` selects where the installer stores chDB.
 - `DEMO_LEMONADE_BASE_URL` selects the physical OpenAI-compatible endpoint,
@@ -70,7 +72,67 @@ For persistent data, prefer a map dbspec from an embedding application. The
 standalone demo also accepts a `chdb:` URI through `DEMO_CHDB_SPEC`; the demo
 does not delete persistent data.
 
-## Run workbench (fixture)
+## Run the embedded Samizdat workbench
+
+The standalone composition under `samizdat-demo/` runs the real embedded
+Samizdat control loop in the same process as the collector and viewer. It does
+not start Samizdat's HTTP server. The standalone build requires the
+aspect-enabled Jolt compiler from the user's fork. Samizdat and the reusable
+observability libraries are pinned to exact published fork SHAs; the only
+`:local/root` is the enclosing demo application being compiled from
+`samizdat-demo/`.
+
+Build it, then launch it through the cwd-safe wrapper:
+
+```sh
+JOLT_TOOLCHAIN=/absolute/path/to/jolt-with-chez-10.4.1
+JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt
+
+(cd samizdat-demo && \
+  "$JOLT_TOOLCHAIN" "$JOLT_ASPECT_BIN" build \
+    -m demo.samizdat-main -o ../target/samizdat-observability-demo)
+
+DEMO_SAMIZDAT_ROOT=/absolute/path/to/a/disposable/project \
+DEMO_SAMIZDAT_DB=/absolute/path/to/samizdat.sqlite3 \
+DEMO_CHDB_SPEC='chdb:/absolute/path/to/telemetry' \
+JOLT_CHDB_LIB=/absolute/path/to/libchdb.so \
+HARNESS_PROVIDER=local \
+HARNESS_BASE_URL=http://127.0.0.1:PORT/v1 \
+HARNESS_MODEL=local-model \
+  scripts/run-samizdat-demo.sh
+```
+
+Open <http://127.0.0.1:8080/workbench>. The exact submitted prompt drives
+Samizdat. Durable run events stream into the page while compiler-selected
+aspects create parent-linked run, turn, model, tool, and outbound HTTP client
+spans. The HTTP advice injects its own W3C `traceparent` into the maintained
+`jolt.http-client` call through the compiler's explicit `:replace-args-v1`
+contract, without modifying that library. Launching from the
+target project is required for Samizdat's relative `eval` and file semantics;
+`scripts/run-samizdat-demo.sh` enforces that invariant.
+
+Model content is absent from telemetry by default. Set
+`DEMO_CAPTURE_MODEL_CONTENT=1` only for a deliberate local demo; captured
+prompt/response text remains bounded by `DEMO_CAPTURE_MAX_CHARS` and can be
+filtered with comma-separated `DEMO_REDACT_TERMS`. Physical endpoints, API
+keys, tool arguments, and tool results are never captured by this provider.
+
+The deterministic compiled-binary proof runs a real coding loop that creates
+and claims a task, reads source and tests, edits the source, runs the
+regression, and verifies woven model/tool telemetry. Its nonce-bearing prompt
+must reach the model fixture verbatim, and every fixture request must carry a
+valid `traceparent` whose trace/span identity matches the stored HTTP client
+span:
+
+```sh
+JOLT_CHDB_LIB=/absolute/path/to/libchdb.so \
+  test/samizdat_playwright_e2e.sh
+```
+
+`test/samizdat_real_run_smoke.sh` provides the corresponding browser-free
+compiled-binary smoke.
+
+## Run the offline workbench fixture
 
 `GET /workbench` is a separate, self-contained page: enter a prompt and watch
 one run evolve through ordered semantic-stage events — `run-opened`,
@@ -79,14 +141,17 @@ one run evolve through ordered semantic-stage events — `run-opened`,
 state. State lives in a `glimmer.ratom` cell; `jolt.datastar.core` streams
 live updates over SSE scoped to that one route.
 
-**This is a fixture, not a Samizdat integration.** `demo.workbench-fixture`
+The default `demo.main` entrypoint still uses an intentionally offline fixture.
+`demo.workbench-fixture`
 is a deterministic, offline, hand-scripted stand-in shaped like a Samizdat
 control-loop run — it never opens a socket, reads an environment variable, or
-names a physical host. It tells the same paranoid-android stale-dashboard and
-square-root-of-minus-one story as `test/browser/model-fixture-server.js`.
-`demo.workbench-fixture/RunAdapter` is the seam a real Samizdat-backed
-adapter would implement to replace it, without changing the route, state
-machine, or rendering layer.
+names a physical host. It tells the same coding-agent SSE reconnect story as
+`test/browser/model-fixture-server.js`: an initially plausible cursor reset is
+rejected because it replays rows, then revised into a race-safe,
+`Last-Event-ID`-aware patch with a deterministic regression test.
+`demo.workbench-fixture/AsyncRunAdapter` is also implemented by
+`demo.samizdat-adapter`, so the same route, state machine, live stream, and
+rendering layer serve either the fixture or the real embedded harness.
 
 `/workbench` GET, POST, and SSE traffic is excluded from application
 instrumentation the same way `/`, `/traces/*`, and the agent-demo routes are,
@@ -100,9 +165,40 @@ ordering without retaining prompts, responses, exception messages, or host
 names. The journal is display-only and is never consulted by the run state
 machine.
 
+## Plotje, Hiccup, and the oscope slice
+
+Open `/plotje-editor` for the bounded Plotje/grammar-of-graphics editor and
+`/hiccup-editor` for the safe Hiccup widget editor. Both are server-rendered
+forms first; a small same-origin script progressively replaces only the preview
+and is covered by CSP/no-JavaScript browser tests. The portable Plotje backend
+renders line, point, and categorical bar charts to SVG on Jolt, including
+bounded categorical axis labels. The JVM adapter checks the same spec against
+upstream Plotje as an oracle.
+
+The exact published `chucklehead-dev/oscope` revision owns the explorer's live
+source, query/view model, Ring adapter, and bounded raw downloads. A closed
+telemetry distribution query becomes one serializable EDN screen containing
+controls, an accessible table, a validated Plotje spec, and the exact SQL-free
+query plan that produced it. `/oscope/export` downloads allowlisted physical
+span, log, or metric rows as Arrow or Parquet within explicit 24-hour,
+100,000-row, and 64-MiB result caps. One export remains admitted until its HTTP
+body drains, and both oscope routes are excluded from demo instrumentation.
+The native adapters consume the same screen without a second UI schema. See
+[docs/oscope-vertical-slice.md](docs/oscope-vertical-slice.md) and
+[docs/plotje-portability.md](docs/plotje-portability.md).
+
 ```sh
 JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
   test/aspect_build_smoke.sh
+```
+
+Build the complete woven server and run the same Playwright live-update,
+workbench, and no-JavaScript story against that standalone executable with:
+
+```sh
+JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
+JOLT_CHDB_LIB=/path/to/libchdb.so \
+  npm run test:browser:aspect
 ```
 
 ## Receive OTLP
@@ -153,6 +249,9 @@ See [docs/storyboard.md](docs/storyboard.md) for the tested interaction and
 proposed provider-neutral aspect/weaver proof. The resolved Samizdat run,
 control-loop, model, tool, memory, HTTP, and DB seams are recorded in
 [docs/samizdat-instrumentation.md](docs/samizdat-instrumentation.md).
+The cross-repository release order and exact remaining SHA replacements are in
+[docs/publication-checklist.md](docs/publication-checklist.md); it opens no
+upstream pull request.
 
 Workspace development commands that can invoke Chez must use the repository's
 Chez 10.4.1 wrapper, as documented by the workspace `AGENTS.md`.

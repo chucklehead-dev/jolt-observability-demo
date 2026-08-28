@@ -26,7 +26,7 @@ test("record the complete agent trace tour", async ({page}) => {
   await pause(2200);
 
   const intervention = dialog.locator(".otel-spans > li:has(.otel-role-intervention)");
-  await expect(intervention).toContainText("answer lacked a concrete telemetry mechanism");
+  await expect(intervention).toContainText("first draft required a concrete correctness review");
   await intervention.scrollIntoViewIfNeeded();
   await pause(2200);
 
@@ -35,7 +35,7 @@ test("record the complete agent trace tour", async ({page}) => {
   await expect(generation).toContainText("Captured prompt");
   await expect(generation).toContainText("Controller intervention:");
   await expect(generation).toContainText("Captured response");
-  await expect(generation).toContainText("square root of -1");
+  await expect(generation).toContainText("Last-Event-ID");
   expect(await page.content()).not.toContain("127.0.0.1");
   await generation.scrollIntoViewIfNeeded();
   await pause(3200);

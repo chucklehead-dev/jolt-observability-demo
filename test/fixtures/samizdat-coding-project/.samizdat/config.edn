@@ -1,0 +1,5 @@
+{:run {:max-turns 8
+       :beam-width 1
+       :verify-focused? false
+       :require-test? false
+       :stop-on-first-done? true}}

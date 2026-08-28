@@ -23,14 +23,19 @@ test("generated telemetry streams into the workbench without navigation", async 
 
   await expect(page.getByRole("heading", {name: "Jolt Observability"})).toBeVisible();
   await expect(page.locator("#otel-live[data-otel-live=true]")).toBeVisible();
-  await expect(page.getByText("No traces yet. Generate work to begin.")).toBeVisible();
-  await expect(page.getByText("No logs yet.")).toBeVisible();
+
+  // Other stories and persistent demo runs may already have populated the
+  // shared store. The streaming contract is one new result at the top, not an
+  // empty database at browser startup.
+  const traces = page.locator(".otel-trace-list > li");
+  const initialTraceCount = await traces.count();
 
   const initialURL = page.url();
   const initialNavigations = navigations;
   await page.getByRole("button", {name: "Generate work"}).click();
 
-  const firstTrace = page.locator(".otel-trace-list > li").first();
+  await expect(traces).toHaveCount(initialTraceCount + 1);
+  const firstTrace = traces.first();
   await expect(firstTrace).toContainText("HTTP POST /work");
   await expect(firstTrace).toContainText("6 spans");
   await expect(page.locator(".otel-log-list")).toContainText("calling loopback upstream");
@@ -73,7 +78,7 @@ test("a /workbench run evolves live via SSE to a terminal response", async ({pag
   await expect(page.getByRole("heading", {name: "Run workbench"})).toBeVisible();
   await expect(page.getByText("No run yet. Enter a prompt above to start one.")).toBeVisible();
 
-  await page.getByLabel("Prompt").fill("diagnose the stale dashboard");
+  await page.getByLabel("Prompt").fill("repair the SSE reconnect race");
   await page.getByRole("button", {name: "Run"}).click();
   await page.waitForURL(/\/workbench$/);
 
@@ -82,7 +87,7 @@ test("a /workbench run evolves live via SSE to a terminal response", async ({pag
   await expect(page.locator("p", {hasText: "Status:"}))
     .toContainText("closed", {timeout: 15000});
   await expect(page.locator("#workbench-live .otel-content pre"))
-    .toContainText("square root of -1");
+    .toContainText("Last-Event-ID");
 
   await page.locator(".otel-header a.otel-back-link[href=\"/\"]").click();
   await expect(page).toHaveURL(/\/$/);

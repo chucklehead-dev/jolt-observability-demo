@@ -7,4 +7,10 @@
            :call demo.workbench-fixture/run-script
            :arity 2}
    :advice-role :agent/run
+   :expect {:matches 1}}
+  {:id :demo.workbench/start-async
+   :match {:ns demo.workbench
+           :call demo.workbench-fixture/start-async!
+           :arity 3}
+   :advice-role :agent/run
    :expect {:matches 1}}]}

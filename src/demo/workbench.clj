@@ -27,6 +27,7 @@
 (def ^:private max-history 5)
 (def ^:private default-reveal-interval-ms 350)
 (def ^:private heartbeat-ms 2000)
+(def ^:private default-max-streams 8)
 
 (def ^:private page-headers
   {"Content-Type" "text/html; charset=UTF-8"
@@ -50,20 +51,39 @@
   app-context instances unless a caller passes one explicitly, so tests get
   an isolated ratom per app."
   ([] (state {}))
-  ([{:keys [reveal-interval-ms]}]
+  ([{:keys [reveal-interval-ms max-streams]}]
    (let [state-ratom (ratom/atom {:current nil :history []})]
      {:ratom state-ratom
       :journal (aspect-journal/journal 128 #(swap! state-ratom identity))
       :counter (atom 0)
+      :handles (atom {})
+      :active-streams (atom 0)
+      :max-streams (or max-streams default-max-streams)
       :stopped? (atom false)
       :reveal-interval-ms (or reveal-interval-ms default-reveal-interval-ms)})))
+
+(defn- call-handle! [handle operation & args]
+  (when-let [f (get handle operation)]
+    (try {:value (apply f args)}
+         (catch Throwable error {:error error}))))
 
 (defn stop!
   "Ask any in-flight reveal loop to stop at its next tick, and any open SSE
   stream to stop at its next heartbeat, so server shutdown does not hang."
   [state]
   (reset! (:stopped? state) true)
-  nil)
+  (let [handles @(:handles state)]
+    (doseq [[_ handle] handles] (call-handle! handle :abort!))
+    (let [hung (into {}
+                     (keep (fn [[id handle]]
+                             (let [{:keys [value error] :as result}
+                                   (call-handle! handle :join! 5000)]
+                               (when (or error (false? value) (nil? result))
+                                 [id handle]))))
+                     handles)]
+      (reset! (:handles state) hung)
+      {:status (if (seq hung) :closing :closed)
+       :hung-run-ids (vec (keys hung))})))
 
 ;; --- pure state transitions (unit-tested directly) ----------------------
 
@@ -111,27 +131,143 @@
                  closed? (assoc :status :closed))))
       state-value)))
 
+(defn- bounded-event [event]
+  (cond-> {:stage (or (:stage event) :event)
+           :detail (bounded-text (:detail event) 500)}
+    (:turn event) (assoc :turn (:turn event))
+    (:tool event) (assoc :tool (bounded-text (:tool event) 100))
+    (:decision event) (assoc :decision (bounded-text (:decision event) 100))))
+
+(defn- bounded-capture [capture]
+  (when (map? capture)
+    (into {}
+          (map (fn [[k v]] [k (bounded-text v 500)]))
+          (take 32 capture))))
+
+(defn apply-async-started [state-value id external-id capture]
+  (if (= id (get-in state-value [:current :id]))
+    (update state-value :current
+            #(cond-> (assoc % :status :running)
+               external-id (assoc :external-id (bounded-text external-id 200))
+               capture (assoc :capture (bounded-capture capture))))
+    state-value))
+
+(defn apply-async-event [state-value id event]
+  (if (= id (get-in state-value [:current :id]))
+    (update-in state-value [:current :events]
+               (fn [events]
+                 (vec (take-last 128 (conj (or events [])
+                                           (bounded-event event))))))
+    state-value))
+
+(defn apply-async-complete [state-value id response capture]
+  (if (= id (get-in state-value [:current :id]))
+    (update state-value :current
+            (fn [run]
+              (let [events (:events run)
+                    events (if (= :run-closed (:stage (last events)))
+                             events
+                             (conj events {:stage :run-closed
+                                           :detail "Run completed."}))]
+                (assoc run :status :closed
+                       :events events
+                       :response (bounded-text response max-response-bytes)
+                       :capture (bounded-capture capture)))))
+    state-value))
+
+(defn apply-async-failed [state-value id exception-type]
+  (if (= id (get-in state-value [:current :id]))
+    (update state-value :current
+            #(assoc % :status :failed
+                    :events (conj (:events %) {:stage :run-closed
+                                               :detail "Run failed."})
+                    :response "Run failed; inspect the correlated trace and logs."
+                    :capture (cond-> {:content-state "not captured"}
+                               exception-type
+                               (assoc :exception-type
+                                      (bounded-text exception-type 200)))))
+    state-value))
+
 ;; --- production reveal driver --------------------------------------------
 
 (defn- reveal-loop! [state id]
-  (future
-    (loop []
-      (when-not @(:stopped? state)
-        (Thread/sleep (:reveal-interval-ms state))
-        (let [next-state (swap! (:ratom state) apply-reveal id)
-              current (:current next-state)]
-          (when (and current (= id (:id current)) (seq (:pending current)))
-            (recur)))))))
+  (let [cancelled? (atom false)
+        wake (promise)
+        done? (atom false)
+        future* (atom nil)
+        run-future
+        (future
+          (try
+            (loop []
+              (when-not (or @(:stopped? state) @cancelled?)
+                (when (= ::tick (deref wake (:reveal-interval-ms state) ::tick))
+                  (let [next-state (swap! (:ratom state) apply-reveal id)
+                        current (:current next-state)]
+                    (when (and current (= id (:id current))
+                               (seq (:pending current)))
+                      (recur))))))
+            (finally
+              (reset! done? true)
+              (swap! (:handles state) dissoc id))))
+        handle {:abort! #(do (reset! cancelled? true) (deliver wake :cancelled))
+                :join! (fn [timeout-ms]
+                         (not= ::join-timeout
+                               (deref @future* timeout-ms ::join-timeout)))}]
+    (reset! future* run-future)
+    ;; A zero-delay fixture may finish before its handle is installed. Keep
+    ;; that completion from resurrecting a handle that nobody can join.
+    (swap! (:handles state)
+           (fn [handles]
+             (if @done? handles (assoc handles id handle))))
+    handle))
+
+(defn- async-run! [state adapter id prompt]
+  (let [done? (atom false)
+        finish! (fn [transition & args]
+                  (reset! done? true)
+                  (apply swap! (:ratom state) transition id args)
+                  (swap! (:handles state) dissoc id))
+        callbacks
+        {:started! #(swap! (:ratom state) apply-async-started id %1 %2)
+         :event! #(swap! (:ratom state) apply-async-event id %)
+         :complete! #(finish! apply-async-complete %1 %2)
+         :failed! (fn [error]
+                    (finish! apply-async-failed
+                             (when error (.getName (class error)))))}]
+    (try
+      (let [handle (fixture/start-async! adapter prompt callbacks)]
+        (if (map? handle)
+          ;; Completion is allowed to race start-async!'s return. Testing the
+          ;; shared flag inside swap! prevents registering an already-finished
+          ;; handle after its callback removed it.
+          (swap! (:handles state)
+                 (fn [handles]
+                   (if @done? handles (assoc handles id handle))))
+          ((:failed! callbacks)
+           (ex-info "async adapter returned no ownership handle" {}))))
+      (catch Throwable error
+        ((:failed! callbacks) error)))))
 
 (defn start-run!
   "Start a new run for `prompt` against `adapter`, installing it as current and
   kicking off its background reveal. Returns the new run's id."
   [state adapter prompt]
   (let [id (swap! (:counter state) inc)
-        run (binding [aspect-journal/*journal* (:journal state)]
-              (new-run id prompt adapter))]
-    (swap! (:ratom state) apply-start run)
-    (reveal-loop! state id)
+        prompt (bounded-text prompt max-prompt-bytes)
+        previous-id (get-in @(:ratom state) [:current :id])]
+    (when-let [handle (get @(:handles state) previous-id)]
+      (call-handle! handle :abort!))
+    (if (satisfies? fixture/AsyncRunAdapter adapter)
+      (do
+        (swap! (:ratom state) apply-start
+               {:id id :prompt prompt :status :starting :events []
+                :pending [] :response nil :capture nil})
+        (binding [aspect-journal/*journal* (:journal state)]
+          (async-run! state adapter id prompt)))
+      (let [run (binding [aspect-journal/*journal* (:journal state)]
+                  (new-run id prompt adapter))]
+        (swap! (:ratom state) apply-start run)
+        (reveal-loop! state id)))
     id))
 
 ;; --- HTTP -----------------------------------------------------------------
@@ -156,7 +292,7 @@
 ;; for an SSE request into jolt-http's synchronous Sink-writing StreamableBody
 ;; contract, with a bounded heartbeat so shutdown (stopped?) is observed
 ;; promptly instead of blocking forever on an idle channel read.
-(defrecord ChannelBody [ch stopped?]
+(defrecord ChannelBody [ch stopped? active-streams]
   http-body/StreamableBody
   (write-body-to-sink [_ _response sink]
     (try
@@ -178,20 +314,42 @@
               :else nil))))
       (catch Throwable error
         (when-not (peer-disconnect? error) (throw error)))
-      (finally (async/close! ch)))))
+      (finally
+        (async/close! ch)
+        (swap! active-streams dec)))))
 
 (defn- view-state [state]
   (assoc @(:ratom state)
-         :observations (aspect-journal/snapshot (:journal state))))
+         :observations (aspect-journal/snapshot (:journal state))
+         :adapter-kind (:adapter-kind state)))
 
 (defn- fragment-handler [state]
   (fn [_request] {:status 200 :body (view/render-live (view-state state))}))
 
 (defn- sse-response [state request]
-  (let [handler (datastar/wrap-datastar (fragment-handler state)
-                                        {:rate-limit-ms 100})
-        response (handler request)]
-    (update response :body ->ChannelBody (:stopped? state))))
+  (let [active (:active-streams state)
+        admitted?
+        (loop []
+          (let [n @active]
+            (cond
+              @(:stopped? state) false
+              (>= n (:max-streams state)) false
+              (compare-and-set! active n (inc n)) true
+              :else (recur))))]
+    (if admitted?
+      (try
+        (let [handler (datastar/wrap-datastar (fragment-handler state)
+                                              {:rate-limit-ms 100})
+              response (handler request)]
+          (update response :body ->ChannelBody (:stopped? state) active))
+        (catch Throwable error
+          (swap! active dec)
+          (throw error)))
+      {:status 503
+       :headers {"Content-Type" "text/plain; charset=UTF-8"
+                 "Cache-Control" "no-store"
+                 "Retry-After" "2"}
+       :body "workbench live capacity reached"})))
 
 (defn get-page
   "GET /workbench: the full page for ordinary navigation, or (when the
@@ -213,21 +371,26 @@
         out))))
 
 (defn- bounded-body-bytes
-  "Read `body` up to `limit` bytes without slurping an unbounded stream."
+  "Read `body` up to `limit` bytes without slurping an unbounded stream.
+  Returns an explicit overflow marker; callers must not interpret a truncated
+  form as a valid prompt."
   [body limit]
   (cond
-    (nil? body) (byte-array 0)
-    (string? body) (.getBytes ^String body "UTF-8")
-    (bytes? body) body
+    (nil? body) {:bytes (byte-array 0) :overflow? false}
+    (string? body) (let [bytes (.getBytes ^String body "UTF-8")]
+                     {:bytes (if (<= (alength bytes) limit) bytes (byte-array 0))
+                      :overflow? (> (alength bytes) limit)})
+    (bytes? body) {:bytes (if (<= (alength body) limit) body (byte-array 0))
+                   :overflow? (> (alength body) limit)}
     (satisfies? http-body/RequestBody body)
     (loop [chunks [] total 0]
       (if-let [chunk (http-body/body-recv body)]
         (let [total (+ total (alength chunk))]
           (if (> total limit)
-            (concat-chunks chunks (- total (alength chunk)))
+            {:bytes (byte-array 0) :overflow? true}
             (recur (conj chunks chunk) total)))
-        (concat-chunks chunks total)))
-    :else (byte-array 0)))
+        {:bytes (concat-chunks chunks total) :overflow? false}))
+    :else {:bytes (byte-array 0) :overflow? false}))
 
 (defn- decode-form-value [s]
   (try (URLDecoder/decode (str s) "UTF-8") (catch Throwable _ "")))
@@ -246,9 +409,11 @@
   start."
   [state adapter request]
   (try
-    (let [bytes (bounded-body-bytes (:body request) max-request-body-bytes)
-          prompt (prompt-from-form-body (String. bytes "UTF-8"))]
-      (when-not (str/blank? prompt)
+    (let [{:keys [bytes overflow?]}
+          (bounded-body-bytes (:body request) max-request-body-bytes)
+          prompt (when-not overflow?
+                   (prompt-from-form-body (String. bytes "UTF-8")))]
+      (when (and (not overflow?) (not (str/blank? prompt)))
         (start-run! state adapter prompt)))
     (catch Throwable _ nil))
   {:status 303 :headers redirect-headers :body ""})

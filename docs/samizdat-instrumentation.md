@@ -1,10 +1,11 @@
 # Samizdat instrumentation map
 
-Grounded against `yogthos/samizdat` commit
-`0858ce0a836e72e3c572cc47f868e8db6b32b587`. These are proposed resolved-IR
-join points for the build-time aspect mechanism described in
+Grounded against the user's Samizdat fork commit
+`35b01fddd20fa9e6d77678eadc2a2bcc6fb9ac2d`. The active entries are compiled
+resolved-IR join points for the build-time aspect mechanism described in
 [instrumented-build-spike.md](instrumented-build-spike.md); no runtime var
-replacement is assumed.
+replacement is assumed. Rows explicitly described as future coverage remain
+design inventory rather than claims of the current manifest.
 
 ## Trace shape
 
@@ -39,8 +40,9 @@ generic HTTP or database library:
 | Branch | Per-branch scope | Derived from the branch value passed to `advance-branch`; no standalone resolved call is claimed |
 | Beam turn | `samizdat.agent.beam/advance-branch` arity 3 | `agent/beam.clj:566`; encloses the production branch turn |
 | Model | `samizdat.llm.client/chat` arity 4 | `agent/infer.clj:187`; also cover arity 3 raw/probe callers |
+| Model HTTP | `jolt.http-client/post` arity 2 | `llm/client.clj:152`; the single provider-independent maintained-client call site; inference calls nest beneath the model span, while auxiliary Samizdat calls retain their current run context |
 | Tool selection event | `samizdat.agent.infer/absorb` arity 3 | `agent/loop.clj:377` |
-| Tool execution | `samizdat.agent.tools/run-tool` arity 1 | `agent/loop.clj:520` |
+| Tool execution | `samizdat.agent.tools/run-tool` arity 1 | `agent/loop.clj:547` |
 | Semantic memory | `remember!` 2, `recall` 2/3, `record-outcome!` 3, `forget!` 2 | `store/knowledge.clj` |
 
 `advance-branch` is a complete turn only for the live beam driver. The
@@ -51,9 +53,14 @@ pretend it covers both drivers.
 
 ## Library-owned rules
 
-- The selected `jolt-http-client` release owns version-locked private request
-  seams `jolt.http.platform/perform!` arity 1 and `net-http-send` arity 3. The
-  OTel provider injects Trace Context and emits physical HTTP attempt spans.
+- The current Samizdat proof deliberately matches its public maintained
+  `jolt.http-client/post` call, not the client's version-locked private seams.
+  Its `:replace-args-v1` advice passes the selected call one exact-arity
+  replacement vector containing the original URL and a copied request header
+  map, creates one client span, and injects that span's W3C Trace Context. It
+  records neither the physical endpoint nor request/response content. A
+  reusable library-owned http-client package can later select the
+  lower physical-attempt seam once that private ABI is explicitly versioned.
 - Samizdat currently selects the older `jolt-lang/db` API. Its manifest owns
   `db.sqlite/query` arity 3 and `db.pg/run` arity 3. After upgrading to the
   embedded-driver SPI, replace these with `db.driver/execute-handle` arity 4.

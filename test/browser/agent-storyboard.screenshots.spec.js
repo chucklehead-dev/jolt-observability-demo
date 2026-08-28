@@ -67,13 +67,13 @@ test("capture private, explicit-exchange, and controller-intervention traces", a
   dialog = await openNewestTrace(page);
   await expect(dialog.locator(".otel-role-turn")).toHaveCount(2);
   const intervention = dialog.locator(".otel-spans > li:has(.otel-role-intervention)");
-  await expect(intervention).toContainText("answer lacked a concrete telemetry mechanism");
+  await expect(intervention).toContainText("first draft required a concrete correctness review");
   await expect(intervention.locator("details")).toHaveAttribute("open", "");
   generation = await openGeneration(dialog, 1);
   await expect(generation).toContainText("Captured prompt");
   await expect(generation).toContainText("Controller intervention:");
   await expect(generation).toContainText("Captured response");
-  await expect(generation).toContainText("square root of -1");
+  await expect(generation).toContainText("Last-Event-ID");
   await generation.scrollIntoViewIfNeeded();
   await dialog.evaluate((element) => {
     element.scrollTop = Math.max(0, element.scrollTop - 220);

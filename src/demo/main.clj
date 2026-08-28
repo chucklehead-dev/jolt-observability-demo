@@ -4,6 +4,8 @@
             [db.jdbc]
             [demo.datastar :as demo-datastar]
             [demo.otlp :as demo-otlp]
+            [demo.plotje-portable-editor :as plotje-editor]
+            [demo.safe-hiccup-editor :as hiccup-editor]
             [demo.samizdat-kindly :as samizdat-kindly]
             [demo.workbench :as workbench]
             [demo.workbench-fixture :as workbench-fixture]
@@ -19,22 +21,27 @@
             [otel.propagation :as propagation]
             [otel.sdk :as sdk]
             [otel.trace :as trace]
-            [otel.viewer :as viewer])
+            [otel.viewer :as viewer]
+            [oscope.live :as oscope]
+            [oscope.sample :as oscope-sample]
+            [oscope.ui.web :as oscope-web])
   (:import [java.net URLDecoder]))
 
 (def ^:private service-name "jolt-observability-demo")
 (def ^:private default-lemonade-base-url "http://127.0.0.1:8000/v1")
 (def ^:private default-lemonade-model "local-model")
 (def ^:private initial-agent-prompt
-  (str "You are an absurdly overqualified maintenance android with a brain "
-       "the size of a planet, yet you have been assigned to diagnose why an "
-       "embedded telemetry dashboard stays stale. Return one dry, concise "
-       "diagnostic finding."))
+  (str "You are an absurdly overqualified coding agent with a brain the size "
+       "of a planet, assigned to repair a Jolt Ring telemetry viewer. A "
+       "browser reconnect can miss live SSE updates when a notification "
+       "arrives between reading the durable sequence cursor and registering "
+       "its waiter. Propose a minimal patch and a regression test. Be "
+       "concrete and concise."))
 (def ^:private controller-revision
-  (str "Controller intervention: the answer is evocative but does not name a "
-       "mechanism. Re-evaluate the stale dashboard as a missed live-stream "
-       "wakeup, then return one dry sentence connecting the concrete cursor "
-       "failure to the square root of -1."))
+  (str "Controller intervention: review your first answer against the user's "
+       "exact request. Identify the most important correctness risk or "
+       "missing verification step, then return a revised answer that fixes "
+       "it. Preserve the original task and be concrete."))
 (def ^:private max-captured-response-length 2000)
 (def ^:private json-headers {"Content-Type" "application/json; charset=UTF-8"
                              "Cache-Control" "no-store"})
@@ -64,6 +71,18 @@
 ;; chDB normalizes result labels to lower case, including camel-case aliases.
 (defn- value-of [row k]
   (get row (keyword (str/lower-case (name k)))))
+
+(def ^:private max-span-events 64)
+(def ^:private max-span-events-json-bytes 65536)
+
+(defn- span-events [row]
+  (let [raw (value-of row :EventsJSON)]
+    (if (and (string? raw) (<= (count raw) max-span-events-json-bytes))
+      (try
+        (let [events (json/read-str raw :key-fn keyword)]
+          (if (vector? events) (vec (take max-span-events events)) []))
+        (catch Throwable _ []))
+      [])))
 
 (defn query-summary [conn]
   (let [spans (first (jdbc/fetch conn
@@ -177,15 +196,15 @@
   ([conn] (query-traces conn {} (* (System/currentTimeMillis) 1000000)))
   ([conn selection] (query-traces conn selection (* (System/currentTimeMillis) 1000000)))
   ([conn selection now-unix-nano]
-  (mapv (fn [row]
-          {:traceId (value-of row :traceId)
-           :startedAt (value-of row :startedAt)
-           :durationNs (value-of row :durationNs)
-           :service (value-of row :service)
-           :rootSpan (value-of row :rootSpan)
-           :spanCount (value-of row :spanCount)
-           :status (value-of row :status)})
-        (jdbc/fetch conn (trace-query selection now-unix-nano)))))
+   (mapv (fn [row]
+           {:traceId (value-of row :traceId)
+            :startedAt (value-of row :startedAt)
+            :durationNs (value-of row :durationNs)
+            :service (value-of row :service)
+            :rootSpan (value-of row :rootSpan)
+            :spanCount (value-of row :spanCount)
+            :status (value-of row :status)})
+         (jdbc/fetch conn (trace-query selection now-unix-nano)))))
 
 (defn query-trace-filter-options [conn selection now-unix-nano]
   (let [start (max 0 (- now-unix-nano explorer/max-time-range-nanos))
@@ -218,7 +237,8 @@
    :durationNs (value-of row :Duration)
    :status (some-> (value-of row :StatusCode) str/lower-case)
    :statusMessage (value-of row :StatusMessage)
-   :attributes (value-of row :SpanAttributes)})
+   :attributes (value-of row :SpanAttributes)
+   :events (span-events row)})
 
 (defn- log-json [row]
   {:timestamp (value-of row :Timestamp) :severity (value-of row :SeverityText)
@@ -271,7 +291,7 @@
                       ["SELECT Timestamp, toUnixTimestamp64Nano(Timestamp) AS TimestampUnixNano,
                                TraceId, SpanId, ParentSpanId, ServiceName,
                                SpanName, SpanKind, Duration, StatusCode, StatusMessage,
-                               SpanAttributes FROM otel_traces
+                               SpanAttributes, EventsJSON FROM otel_traces
                           WHERE TraceId = ? ORDER BY Timestamp, SpanId LIMIT 1000" trace-id]))]
     {:traceId trace-id
      :spans spans
@@ -294,14 +314,24 @@
 (defn- viewer-trace-id-path [path]
   (second (re-matches #"/traces/([0-9a-f]{32})" path)))
 
-(defn route-for [path]
-  (cond (= path "/") "/"
+(def ^:private editor-paths
+  #{"/plotje-editor" "/plotje-editor/preview" "/assets/plotje-editor.js"
+    "/hiccup-editor" "/hiccup-editor/preview" "/assets/hiccup-editor.js"})
+
+(defn route-for
+  ([path] (route-for path oscope-web/default-path))
+  ([path oscope-path]
+   (cond (= path "/") "/"
         (= path "/api/summary") "/api/summary"
         (= path "/api/traces") "/api/traces"
         (str/starts-with? path "/api/traces/") "/api/traces/:trace-id"
         (= path "/api/logs") "/api/logs"
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
         (= path "/assets/workbench.js") "/assets/workbench.js"
+        (= path oscope-path) oscope-path
+        (= path (oscope-web/export-path oscope-path))
+        (oscope-web/export-path oscope-path)
+        (contains? editor-paths path) path
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/workbench") "/workbench"
         (= path "/work") "/work"
@@ -310,7 +340,7 @@
         (= path "/agent-work-intervention") "/agent-work-intervention"
         (= path "/upstream") "/upstream"
         (contains? otlp-receiver/receiver-paths path) path
-        :else "/*"))
+        :else "/*")))
 
 (defn- database-work! [connection tracer]
   (trace/with-span [span tracer "SELECT demo readiness"
@@ -508,7 +538,7 @@
           result)))))
 
 (defn- agent-run!
-  [{:keys [tracer logger] :as app} capture-content? intervention?]
+  [{:keys [tracer logger] :as app} prompt capture-content? intervention?]
   (trace/with-span
     [run tracer "samizdat.run"
      {:kind :internal
@@ -534,7 +564,7 @@
         [_ tracer "samizdat.branch B1"
          {:kind :internal
           :attributes {:samizdat.branch.id "B1"}}]
-        (let [first-messages [{:role "user" :content initial-agent-prompt}]
+        (let [first-messages [{:role "user" :content prompt}]
               first-turn (agent-turn! app {:capture-content? capture-content?
                                            :messages first-messages
                                            :turn-number 1
@@ -549,13 +579,13 @@
                       {:samizdat.intervention.action "revise"
                        :samizdat.intervention.source "controller"
                        :samizdat.intervention.reason
-                       "answer lacked a concrete telemetry mechanism"
+                       "first draft required a concrete correctness review"
                        :samizdat.branch.id "B1"}}]
                     (trace/add-event! intervention "samizdat.controller.intervened"
                                       {:samizdat.route "revise"}))
                   (agent-turn!
                    app {:capture-content? capture-content?
-                        :messages [{:role "user" :content initial-agent-prompt}
+                        :messages [{:role "user" :content prompt}
                                    {:role "assistant" :content (:content first-turn)}
                                    {:role "user" :content controller-revision}]
                         :turn-number 2 :final? true}))
@@ -578,16 +608,17 @@
                                     :samizdat.controller.intervened intervention?}})
           (trace/set-status! run :ok)
           {:model (:model final-turn)
+           :response (:content final-turn)
            :response-captured capture-content?
            :controller-intervened intervention?
            :turns (if intervention? 2 1)
            :response-characters (:response-characters final-turn)})))))
 
 (defn- agent-work! [app capture-content?]
-  (agent-run! app capture-content? false))
+  (agent-run! app initial-agent-prompt capture-content? false))
 
 (defn- agent-intervention-work! [app]
-  (agent-run! app true true))
+  (agent-run! app initial-agent-prompt true true))
 
 (defn app-context
   "Build the handler context. Query and work functions are injectable so pure
@@ -596,10 +627,23 @@
            summary-fn traces-fn filtered-traces-fn trace-filter-options-fn
            now-nanos-fn trace-fn logs-fn work-fn agent-work-fn
            agent-intervention-work-fn otlp-handler
+           oscope-source oscope-handler oscope-path
            lemonade-base-url lemonade-model lemonade-telemetry-address
-           lemonade-disable-thinking? workbench-state workbench-adapter]
+           lemonade-disable-thinking? workbench-state workbench-adapter
+           workbench-kind]
     :or {port 8080}}]
   (let [now-nanos-fn (or now-nanos-fn #(* (System/currentTimeMillis) 1000000))
+        oscope-path (or oscope-path oscope-web/default-path)
+        oscope-handler
+        (or oscope-handler
+            (if oscope-source
+              (oscope-web/handler oscope-source {:path oscope-path})
+              (oscope-web/handler
+               {:load-command (fn [_ selection]
+                                (oscope-sample/screen-for-selection selection))}
+               {:path oscope-path})))
+        configured-lemonade-url
+        (or lemonade-base-url (System/getenv "DEMO_LEMONADE_BASE_URL"))
         traces-fn (or traces-fn #(query-traces connection))
         filtered-traces-fn
         (or filtered-traces-fn
@@ -616,52 +660,67 @@
                  :service-options []
                  :status-options [{:value "ok" :label "OK"}
                                   {:value "error" :label "Error"}]
-                 :window-options trace-window-options})))]
-    {:connection connection :port port
-     :tracer (or tracer (sdk/tracer "demo.http"))
-     :logger (or logger (sdk/logger "demo.http"))
-     :propagator (or propagator propagation/default-propagator)
-     :stream-state (or stream-state (demo-datastar/stream-state))
-     :flush-fn (or flush-fn (constantly true))
-     :summary-fn (or summary-fn #(query-summary connection))
-     :traces-fn traces-fn
-     :filtered-traces-fn filtered-traces-fn
-     :trace-filter-options-fn trace-filter-options-fn
-     :now-nanos-fn now-nanos-fn
-     :trace-fn (or trace-fn #(query-trace connection %))
-     :logs-fn (or logs-fn #(query-logs connection))
-     :work-fn (or work-fn real-work!)
-     :agent-work-fn (or agent-work-fn agent-work!)
-     :agent-intervention-work-fn
-     (or agent-intervention-work-fn agent-intervention-work!)
-     :lemonade-base-url (or lemonade-base-url
-                            (System/getenv "DEMO_LEMONADE_BASE_URL")
-                            default-lemonade-base-url)
-     :lemonade-model (or lemonade-model
-                         (System/getenv "DEMO_LEMONADE_MODEL")
-                         default-lemonade-model)
-     :lemonade-telemetry-address
-     (or lemonade-telemetry-address
-         (System/getenv "DEMO_LEMONADE_TELEMETRY_ADDRESS")
-         "local-model-host")
-     :lemonade-disable-thinking?
-     (if (nil? lemonade-disable-thinking?)
-       (not (contains? #{"false" "0"}
-                       (some-> (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")
-                               str/lower-case)))
-       lemonade-disable-thinking?)
-     :otlp-handler (or otlp-handler
-                       (fn [_] (error-response 503 "OTLP receiver unavailable")))
-     :workbench-state (or workbench-state (workbench/state))
-     :workbench-adapter (or workbench-adapter (workbench-fixture/adapter))}))
+                 :window-options trace-window-options})))
+        workbench-state (or workbench-state (workbench/state))
+        app
+        {:connection connection :port port
+         :tracer (or tracer (sdk/tracer "demo.http"))
+         :logger (or logger (sdk/logger "demo.http"))
+         :propagator (or propagator propagation/default-propagator)
+         :stream-state (or stream-state (demo-datastar/stream-state))
+         :flush-fn (or flush-fn (constantly true))
+         :summary-fn (or summary-fn #(query-summary connection))
+         :traces-fn traces-fn
+         :filtered-traces-fn filtered-traces-fn
+         :trace-filter-options-fn trace-filter-options-fn
+         :now-nanos-fn now-nanos-fn
+         :trace-fn (or trace-fn #(query-trace connection %))
+         :logs-fn (or logs-fn #(query-logs connection))
+         :oscope-source oscope-source
+         :oscope-handler oscope-handler
+         :oscope-path oscope-path
+         :work-fn (or work-fn real-work!)
+         :agent-work-fn (or agent-work-fn agent-work!)
+         :agent-intervention-work-fn
+         (or agent-intervention-work-fn agent-intervention-work!)
+         :lemonade-base-url (or configured-lemonade-url default-lemonade-base-url)
+         :lemonade-model (or lemonade-model
+                             (System/getenv "DEMO_LEMONADE_MODEL")
+                             default-lemonade-model)
+         :lemonade-telemetry-address
+         (or lemonade-telemetry-address
+             (System/getenv "DEMO_LEMONADE_TELEMETRY_ADDRESS")
+             "local-model-host")
+         :lemonade-disable-thinking?
+         (if (nil? lemonade-disable-thinking?)
+           (not (contains? #{"false" "0"}
+                           (some-> (System/getenv "DEMO_LEMONADE_DISABLE_THINKING")
+                                   str/lower-case)))
+           lemonade-disable-thinking?)
+         :otlp-handler (or otlp-handler
+                           (fn [_] (error-response 503 "OTLP receiver unavailable")))
+         :workbench-state
+         (assoc workbench-state :adapter-kind
+                (or workbench-kind
+                    (if workbench-adapter :custom :fixture)))}]
+    (assoc app :workbench-adapter
+           (or workbench-adapter (workbench-fixture/adapter)))))
 
 (defn raw-handler [{:keys [summary-fn traces-fn filtered-traces-fn
                            trace-filter-options-fn now-nanos-fn trace-fn logs-fn
                            work-fn agent-work-fn agent-intervention-work-fn
-                           logger stream-state otlp-handler]
+                           logger stream-state otlp-handler oscope-handler
+                           oscope-path]
                     :as app}]
   (fn [{:keys [request-method uri query-string] :as request}]
     (cond
+      (contains? editor-paths uri)
+      (or (plotje-editor/handler request)
+          (hiccup-editor/handler request))
+
+      (contains? #{oscope-path (oscope-web/export-path oscope-path)} uri)
+      (oscope-handler request)
+
       (otlp-receiver/receiver-request? request)
       (otlp-handler request)
 
@@ -698,8 +757,9 @@
                                       :summary {} :traces [] :logs []})}))
 
       (and (= :post request-method) (= uri "/workbench"))
-      (workbench/post-run! (:workbench-state app) (:workbench-adapter app)
-                           request)
+      (assoc (workbench/post-run! (:workbench-state app)
+                                  (:workbench-adapter app) request)
+             ::flush? true)
 
       (not= :get request-method) (error-response 405 "method not allowed")
 
@@ -767,8 +827,9 @@
         (= uri "/work") (try
                            (json-response (merge {:ok true} (work-fn app)))
                            (catch Throwable e
-                             (logs/emit! logger {:body (str "work failed: " (ex-message e))
-                                                :severity :error})
+                             (logs/emit! logger
+                                         {:body (str "work failed: " (ex-message e))
+                                          :severity :error})
                              (error-response 502 "upstream request failed")))
         (str/starts-with? uri "/api/traces/")
         (if-let [trace-id (trace-id-path uri)]
@@ -782,7 +843,7 @@
         propagator (:propagator app)]
     (otlp-receiver/wrap-suppress-receiver-telemetry
      (fn [{:keys [request-method uri] :as request}]
-       (let [route (route-for uri)
+       (let [route (route-for uri (:oscope-path app))
              method (str/upper-case (name (or request-method :unknown)))
              untraced? (or (otlp-receiver/telemetry-suppressed? request)
                            (= route "/")
@@ -790,6 +851,11 @@
                            (= route "/assets/otel-viewer.js")
                            (= route "/workbench")
                            (= route "/assets/workbench.js")
+                           (contains? #{(:oscope-path app)
+                                        (oscope-web/export-path
+                                         (:oscope-path app))}
+                                      route)
+                           (contains? editor-paths route)
                            (contains? #{"/agent-work"
                                         "/agent-work-with-response"
                                         "/agent-work-intervention"} route)
@@ -818,9 +884,12 @@
 
 (defn start!
   "Start database, batched OTel SDK, and HTTP server. The returned map has an
-  idempotent :stop! function which enforces server, SDK, connection shutdown."
+  idempotent, retryable :stop! function which enforces server, workbench
+  source, SDK, and connection shutdown in ownership order."
   ([] (start! {}))
-  ([{:keys [port db-spec] :or {port (env-port)}}]
+  ([{:keys [port db-spec workbench-adapter workbench-kind
+            workbench-source-close! oscope-path]
+     :or {port (env-port)}}]
    (let [spec (or db-spec (System/getenv "DEMO_CHDB_SPEC") "chdb::memory:")
          conn (jdbc/connection spec)]
      (try
@@ -828,34 +897,82 @@
                                              :signals #{:spans :metrics :logs}})
              otel (sdk/init! {:service-name service-name :exporter exporter
                               :processor :batch :metrics? false :logs? true
-                              :bridge-logging? false})]
+                              :bridge-logging? false})
+             oscope-source* (atom nil)]
          (try
-           (let [app (app-context {:connection conn :port port
+           (let [oscope-source (oscope/open! {:connection conn})
+                 _ (reset! oscope-source* oscope-source)
+                 oscope-path (or oscope-path
+                                 (System/getenv "DEMO_OSCOPE_PATH")
+                                 oscope-web/default-path)
+                 app (app-context {:connection conn :port port
                                    :propagator (:propagator otel)
                                    :flush-fn #(sdk/force-flush! otel)
-                                   :otlp-handler (demo-otlp/handler exporter)})
+                                   :otlp-handler (demo-otlp/handler exporter)
+                                   :oscope-source oscope-source
+                                   :oscope-path oscope-path
+                                   :workbench-adapter workbench-adapter
+                                   :workbench-kind workbench-kind})
                  server (http-server/run-server (handler app) :port port
                                                 :server-name "127.0.0.1"
                                                 :reuse-address? true)
-                 stopped? (atom false)]
+                 lifecycle-state (atom :open)
+                 front-stopped? (atom false)
+                 stop-lock (Object.)
+                 close-source! (or workbench-source-close!
+                                   (fn [] {:status :closed}))]
              {:port port :connection conn :otel otel :server server :app app
+              :oscope-source oscope-source
               :stop! (fn []
-                       (when (compare-and-set! stopped? false true)
-                         (let [first-error (atom nil)]
-                           (doseq [cleanup [#(demo-datastar/stop-streams!
-                                              (:stream-state app))
-                                            #(workbench/stop!
-                                              (:workbench-state app))
-                                            #(http-server/stop-server server)
-                                            #(sdk/shutdown! otel)
-                                            #(.close conn)]]
-                             (try
-                               (cleanup)
-                               (catch Throwable error
-                                 (compare-and-set! first-error nil error))))
-                           (when-let [error @first-error]
-                             (throw error)))))})
+                       (locking stop-lock
+                         (if (= :closed @lifecycle-state)
+                           {:status :closed}
+                           (do
+                             (reset! lifecycle-state :closing)
+                             ;; Stop ingress first: no new work may appear
+                             ;; while the owned workbench source is joining.
+                             ;; Publish success only after stop-server returns;
+                             ;; a timed-out/throwing stop must be retried before
+                             ;; the database can be closed beneath live work.
+                             (when-not @front-stopped?
+                               (demo-datastar/stop-streams! (:stream-state app))
+                               (http-server/stop-server server)
+                               (reset! front-stopped? true))
+                             (let [workbench-result
+                                   (try (workbench/stop! (:workbench-state app))
+                                        (catch Throwable error
+                                          {:status :closing :errors [error]}))
+                                   source-result
+                                   (try (close-source!)
+                                        (catch Throwable error
+                                          {:status :closing :errors [error]}))
+                                   closing? (or (= :closing (:status workbench-result))
+                                                (= :closing (:status source-result)))]
+                               (if closing?
+                                 {:status :closing
+                                  :workbench workbench-result
+                                  :source source-result}
+                                 (let [oscope-result
+                                       (try
+                                         (oscope/close! oscope-source)
+                                         {:status :closed}
+                                         (catch Throwable error
+                                           {:status :closing :errors [error]}))]
+                                   (if (= :closing (:status oscope-result))
+                                     {:status :closing
+                                      :workbench workbench-result
+                                      :source source-result
+                                      :oscope oscope-result}
+                                     (do
+                                       (sdk/shutdown! otel)
+                                       (.close conn)
+                                       (reset! lifecycle-state :closed)
+                                       {:status :closed})))))))))})
            (catch Throwable e
+             (when workbench-source-close!
+               (try (workbench-source-close!) (catch Throwable _ nil)))
+             (when-let [source @oscope-source*]
+               (try (oscope/close! source) (catch Throwable _ nil)))
              (sdk/shutdown! otel)
              (throw e))))
        (catch Throwable e

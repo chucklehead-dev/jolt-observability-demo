@@ -2,12 +2,18 @@
   (:require [clojure.test :as test]
             [demo.aspect-journal-test]
             [demo.main-test]
+            [demo.oscope-web-test]
+            [demo.plotje-portable-test]
+            [demo.portable-editors-test]
             [demo.property-test :as property]
             [demo.workbench-test]))
 
 (defn -main [& _]
   (let [result (test/run-tests 'demo.main-test
+                               'demo.oscope-web-test
                                'demo.aspect-journal-test
+                               'demo.plotje-portable-test
+                               'demo.portable-editors-test
                                'demo.workbench-test)
         properties (property/run-properties!)
         _ (doseq [{:keys [label result]} properties]

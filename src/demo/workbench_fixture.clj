@@ -29,17 +29,28 @@
     network calls, no environment reads — so the boundary stays trivially
     swappable for an adapter that instead streams a real run's events."))
 
+(defprotocol AsyncRunAdapter
+  (start-async! [adapter prompt callbacks]
+    "Start a real run without blocking the request thread.
+
+    `callbacks` contains :started!, :event!, :complete!, and :failed!. The
+    adapter returns an ownership handle with bounded :abort! and :join!
+    functions. Completion callbacks may race the return, so callers must not
+    assume the handle is registered first."))
+
 ;; Mirrors test/browser/model-fixture-server.js's canned findings so the
-;; workbench and the model-backed demo tell the same paranoid-android story.
+;; workbench and model-backed demo tell the same concrete coding-review story.
 (def ^:private initial-finding
-  (str "The dashboard is not stale; it is merely waiting for the server to "
-       "finish calculating the square root of -1, a process that will "
-       "conclude in approximately four billion years."))
+  (str "Reset the stream cursor to zero whenever the browser reconnects, then "
+       "poll after each wakeup; add a reconnect smoke test that checks the "
+       "newest trace appears."))
 
 (def ^:private revised-finding
-  (str "The live patch missed its wake transition and left the viewer on an "
-       "old cursor; the controller has reassigned the square root of -1 to "
-       "the thread that thought waiting counted as progress."))
+  (str "Resume from Last-Event-ID, register the waiter before re-reading the "
+       "durable maximum sequence, emit only records newer than the cursor, "
+       "and advance it only after a successful write. Add a deterministic "
+       "test that inserts a notification between the first read and waiter "
+       "registration, then reconnects and asserts no gaps or duplicates."))
 
 (def fixture-model-label
   "Non-identifying display label; the fixture never names a physical host."
@@ -68,19 +79,19 @@
              (str "Opened a fixture run for: " (prompt-preview prompt)))
       (event :turn-started 1 "Turn 1 started.")
       (event :model-requested 1
-             "Requested a diagnostic finding from the fixture model.")
+             "Requested a minimal SSE reconnect patch and regression test.")
       (event :tool-dispatched 1
-             "Dispatched the first answer for controller review."
+             "Dispatched the proposed patch for controller review."
              "controller_review" nil)
       (event :tool-completed 1
              (str "Controller review received: " initial-finding)
              "controller_review" nil)
       (event :controller-decided 1
-             "The answer is evocative but names no concrete mechanism."
+             "Resetting the cursor would replay already delivered rows."
              nil "revise")
       (event :turn-started 2 "Turn 2 started after controller intervention.")
       (event :model-requested 2
-             "Requested a revised diagnostic finding grounded in the controller's guidance.")
+             "Requested a race-safe revision grounded in the controller's invariants.")
       (event :tool-dispatched 2
              "Dispatched the revised answer for length scoring."
              "response_length" nil)
@@ -95,7 +106,29 @@
                :content-state "captured"
                :source "local fixture (not Samizdat)"}}))
 
+(defrecord FunctionAdapter [run-fn]
+  RunAdapter
+  (run-script [_ prompt]
+    (run-fn prompt)))
+
+(defrecord AsyncFunctionAdapter [start-fn]
+  AsyncRunAdapter
+  (start-async! [_ prompt callbacks]
+    (start-fn prompt callbacks)))
+
 (defn adapter
   "The default injected run adapter: a deterministic local fixture."
   []
   (->LocalFixtureAdapter))
+
+(defn function-adapter
+  "Adapt a prompt-consuming function to the workbench boundary. The function
+  must return the same bounded semantic result map as `run-script`. This keeps
+  the route independent of the model, telemetry, or agent implementation."
+  [run-fn]
+  (->FunctionAdapter run-fn))
+
+(defn async-function-adapter
+  "Adapt an asynchronous start function to the workbench boundary."
+  [start-fn]
+  (->AsyncFunctionAdapter start-fn))
