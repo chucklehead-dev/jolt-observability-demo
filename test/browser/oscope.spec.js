@@ -133,3 +133,41 @@ test("oscope live mode refreshes in place, freezes exact export bounds, and cann
     .toBe(before.spanCount + (2 * spansPerWork));
   assertNoBrowserErrors();
 });
+
+test("the extracted oscope workbench filters traces, opens detail, and refreshes live", async ({page, request}) => {
+  const assertNoBrowserErrors = guardBrowserErrors(page);
+  await request.post("/work");
+  await page.goto("/oscope/telemetry?window=1h");
+  await expect(page.getByRole("heading", {name: "Telemetry workbench"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Find traces"})).toBeVisible();
+  await expect(page.getByRole("link", {name: "Logs, metrics & charts"})).toHaveAttribute("href", "/oscope");
+
+  const traces = page.locator(".otel-trace-list > li");
+  const before = await traces.count();
+  expect(before).toBeGreaterThan(0);
+
+  await page.getByLabel("Operation or name").fill("definitely-no-match");
+  await page.getByRole("button", {name: "Apply filters"}).click();
+  await expect(page).toHaveURL(/operation=definitely-no-match/);
+  await expect(page.locator(".otel-trace-list")).toHaveCount(0);
+  await expect(page.getByText("No traces yet. Generate work to begin.")).toBeVisible();
+
+  await page.getByLabel("Operation or name").fill("GET /upstream");
+  await page.getByRole("button", {name: "Apply filters"}).click();
+  await expect(page).toHaveURL(/operation=GET(?:\+|%20)%2Fupstream/);
+  await expect(page.locator(".otel-trace-list > li").first()).toBeVisible();
+
+  await page.locator(".otel-trace-list > li a").first().click();
+  const dialog = page.getByRole("dialog", {name: "Trace detail"});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Correlated logs")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+
+  await page.getByRole("link", {name: "Clear"}).click();
+  const unfiltered = await page.locator(".otel-trace-list > li").count();
+  await request.post("/work");
+  await expect(page.locator(".otel-trace-list > li"), {timeout: 15_000})
+    .toHaveCount(unfiltered + 1);
+  assertNoBrowserErrors();
+});

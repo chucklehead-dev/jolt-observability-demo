@@ -17,6 +17,7 @@
             [otel.sdk :as sdk]
             [otel.viewer :as viewer]
             [oscope.live :as oscope]
+            [oscope.ui.workbench :as oscope-workbench]
             [oscope.ui.web :as oscope-web]
             [teensyp.ffi-net :as net]))
 
@@ -109,6 +110,23 @@
                   app {:request-method :get :uri route})))
       (is (= 209 (:status (h {:request-method :get :uri route})))))
     (is (= (mapv #(vector % true) routes) @seen))))
+
+(deftest extracted-oscope-workbench-routes-are-mounted-and-suppressed
+  (let [seen (atom [])
+        route oscope-workbench/default-path
+        app (assoc (test-app)
+                   :oscope-workbench-handler
+                   (fn [request]
+                     (swap! seen conj
+                            [(:uri request)
+                             (context/instrumentation-suppressed?)])
+                     {:status 210 :headers {} :body "workbench"}))
+        h (demo/handler app)]
+    (is (= route (demo/route-for route)))
+    (is (true? (demo/server-instrumentation-excluded?
+                app {:request-method :get :uri route})))
+    (is (= 210 (:status (h {:request-method :get :uri route}))))
+    (is (= [[route true]] @seen))))
 
 (deftest agent-demo-routes-select-content-capture-without-http-wrapper-spans
   (let [calls (atom [])

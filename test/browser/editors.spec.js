@@ -21,10 +21,16 @@ test("Plotje and Hiccup previews update progressively without tracing the editor
 
   await page.goto("/oscope/edit/plotje");
   await expect(page.getByRole("heading", {name: "Plotje editor"})).toBeVisible();
+  await expect(page.getByText("Chart grammar reference & examples")).toBeVisible();
+  await expect(page.getByText(":area", {exact: true})).toBeVisible();
   const plotjePreview = page.locator("#plotje-preview");
   await expect(plotjePreview.locator("svg")).toBeVisible();
 
   const plotjeSpec = page.getByLabel("Chart specification");
+  await page.getByRole("button", {name: "Load example"}).first().click();
+  await expect(plotjeSpec).toHaveValue(/:mark :area/);
+  await expect(plotjePreview.locator("polygon")).toBeVisible();
+  await expect(plotjePreview.locator(".plotje-rule")).toHaveCount(3);
   await plotjeSpec.fill("{:title \"Worker queue\" :data [{:service \"worker\" :count 7}] :layers [{:mark :bar :x :service :y :count}]}");
   await expect(plotjePreview).toContainText("Worker queue");
   await plotjeSpec.fill("{:layers :not-a-vector}");

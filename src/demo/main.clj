@@ -23,6 +23,7 @@
             [otel.viewer :as viewer]
             [oscope.live :as oscope]
             [oscope.sample :as oscope-sample]
+            [oscope.ui.workbench :as oscope-workbench]
             [oscope.ui.visualization-editor :as visualization-editor]
             [oscope.ui.web :as oscope-web])
   (:import [java.net URLDecoder]))
@@ -335,6 +336,7 @@
         (= path "/api/logs") "/api/logs"
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
         (= path "/assets/workbench.js") "/assets/workbench.js"
+        (oscope-workbench/handled-path? oscope-workbench/default-path path) path
         (oscope-web/handled-path? oscope-path path) path
         (visualization-editor/handled-path? (oscope-editor-path oscope-path) path)
         path
@@ -640,6 +642,7 @@
            now-nanos-fn trace-fn logs-fn work-fn agent-work-fn
            agent-intervention-work-fn otlp-handler
            oscope-source oscope-handler oscope-path oscope-editor-handler
+           oscope-workbench-handler
            lemonade-base-url lemonade-model lemonade-telemetry-address
            lemonade-disable-thinking? workbench-state workbench-adapter
            workbench-kind]
@@ -667,6 +670,11 @@
              {:path oscope-path
               :visualization-editor-path
               (visualization-editor/plotje-path editor-path)}))
+        oscope-workbench-handler
+        (or oscope-workbench-handler
+            (when connection
+              (oscope-workbench/handler
+               connection {:advise-trace samizdat-kindly/advise-trace})))
         configured-lemonade-url
         (or lemonade-base-url (System/getenv "DEMO_LEMONADE_BASE_URL"))
         traces-fn (or traces-fn #(query-traces connection))
@@ -706,6 +714,7 @@
          :oscope-path oscope-path
          :oscope-editor-handler oscope-editor-handler
          :oscope-editor-path editor-path
+         :oscope-workbench-handler oscope-workbench-handler
          :work-fn (or work-fn real-work!)
          :agent-work-fn (or agent-work-fn agent-work!)
          :agent-intervention-work-fn
@@ -737,7 +746,8 @@
                            trace-filter-options-fn now-nanos-fn trace-fn logs-fn
                            work-fn agent-work-fn agent-intervention-work-fn
                            logger stream-state otlp-handler oscope-handler
-                           oscope-path oscope-editor-handler oscope-editor-path]
+                           oscope-path oscope-editor-handler oscope-editor-path
+                           oscope-workbench-handler]
                     :as app}]
   (fn [{:keys [request-method uri query-string] :as request}]
     (cond
@@ -747,6 +757,10 @@
 
       (oscope-web/handled-path? oscope-path uri)
       (oscope-handler request)
+
+      (and oscope-workbench-handler
+           (oscope-workbench/handled-path? oscope-workbench/default-path uri))
+      (oscope-workbench-handler request)
 
       (otlp-receiver/receiver-request? request)
       (otlp-handler request)
@@ -878,6 +892,7 @@
         (= route "/assets/otel-viewer.js")
         (= route "/workbench")
         (= route "/assets/workbench.js")
+        (oscope-workbench/handled-path? oscope-workbench/default-path route)
         (oscope-web/handled-path? (:oscope-path app) route)
         (and (:oscope-editor-path app)
              (visualization-editor/handled-path?
@@ -892,7 +907,8 @@
        (or (= route "/")
            (= route "/traces/:trace-id")
            (str/starts-with? route "/api/")
-           (oscope-web/handled-path? (:oscope-path app) route))))
+           (oscope-web/handled-path? (:oscope-path app) route)
+           (oscope-workbench/handled-path? oscope-workbench/default-path route))))
 
 (defn- source-http-fallback
   [app dispatch request route]

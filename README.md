@@ -193,14 +193,23 @@ machine.
 
 ## Plotje, Hiccup, and the oscope slice
 
+Open `/oscope/telemetry` for the extracted oscope trace workbench: bounded
+service/operation/status/duration/time filtering, complete parent/child span
+trees, span events, correlated logs, and live static-first refresh. The demo
+supplies only its Samizdat Kindly adviser at the rendering boundary; oscope
+itself contains no agent-specific vocabulary.
+
 Open `/oscope/edit/plotje` for the bounded Plotje/grammar-of-graphics editor and
 `/oscope/edit/hiccup` for the safe Hiccup widget editor. Both are supplied by
 the same mountable oscope visualization-document boundary, server-rendered
 forms first; a small same-origin script progressively replaces only the preview
 and is covered by CSP/no-JavaScript browser tests. The portable Plotje backend
-renders line, point, and categorical bar charts to SVG on Jolt, including
-bounded categorical axis labels. The JVM adapter checks the same spec against
-upstream Plotje as an oracle.
+renders line, point, categorical bar, area, rule, and tick marks to SVG on Jolt,
+including bounded palettes, colors, opacity, stroke/point/bar sizing, grids,
+and categorical axis labels. The editor includes an in-page grammar reference
+and loadable layered examples, so it does not assume prior Plotje expertise.
+The JVM adapter checks the compatible core spec against upstream Plotje as an
+oracle.
 
 The exact published `chucklehead-dev/oscope` revision owns the explorer's live
 source, query/view model, Ring adapter, and bounded raw downloads. A closed

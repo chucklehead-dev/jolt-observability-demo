@@ -18,8 +18,20 @@
     (is (str/starts-with? svg "<svg"))
     (is (= 2 (count (re-seq #"<polyline" svg))))
     (is (= 4 (count (re-seq #"<circle" svg))))
-    (is (str/includes? svg "rgb(228,26,28)"))
-    (is (str/includes? svg "rgb(55,126,184)"))))
+    (is (str/includes? svg "#e41a1c"))
+    (is (str/includes? svg "#377eb8"))))
+
+(deftest expanded-portable-grammar-is-visible-through-the-demo
+  (let [svg (portable/spec->svg
+             {:palette ["#2563eb" "#dc2626"]
+              :data [{:x 1 :latency 18 :budget 25}
+                     {:x 2 :latency 29 :budget 25}]
+              :layers [{:mark :area :x :x :y :latency :fill "#93c5fd"}
+                       {:mark :rule :x :x :y :budget :stroke "#dc2626"}
+                       {:mark :tick :x :x :y :latency}]})]
+    (is (str/includes? svg "<polygon"))
+    (is (str/includes? svg "class=\"plotje-rule\""))
+    (is (str/includes? svg "class=\"plotje-tick\""))))
 
 (deftest portable-subset-escapes-text
   (let [svg (portable/spec->svg (assoc latency :title "<script>&boom</script>"))]
