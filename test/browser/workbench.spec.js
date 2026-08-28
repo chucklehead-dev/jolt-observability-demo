@@ -1,5 +1,8 @@
 const {test, expect} = require("@playwright/test");
 
+const wovenDatabase = process.env.DEMO_EXPECT_WOVEN_DB === "1";
+const expectedWorkSpanCount = wovenDatabase ? 6 : 5;
+
 function guardBrowserErrors(page) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
@@ -9,7 +12,7 @@ function guardBrowserErrors(page) {
   return () => expect(errors, "browser emitted no errors").toEqual([]);
 }
 
-test("generated telemetry streams into the workbench without navigation", async ({page}) => {
+test("generated telemetry streams into the workbench without navigation", async ({page, request}) => {
   const assertNoBrowserErrors = guardBrowserErrors(page);
   let navigations = 0;
   page.on("framenavigated", (frame) => {
@@ -37,17 +40,32 @@ test("generated telemetry streams into the workbench without navigation", async 
   await expect(traces).toHaveCount(initialTraceCount + 1);
   const firstTrace = traces.first();
   await expect(firstTrace).toContainText("HTTP POST /work");
-  await expect(firstTrace).toContainText("6 spans");
+  await expect(firstTrace).toContainText(`${expectedWorkSpanCount} spans`);
   await expect(page.locator(".otel-log-list")).toContainText("calling loopback upstream");
   expect(page.url()).toBe(initialURL);
   expect(navigations).toBe(initialNavigations);
 
+  if (wovenDatabase) {
+    const tracePath = await firstTrace.getByRole("link").getAttribute("href");
+    const traceId = tracePath.split("/").pop();
+    const detail = await (await request.get(`/api/traces/${traceId}`)).json();
+    const server = detail.spans.find((span) => span.name === "HTTP POST /work");
+    const database = detail.spans.find((span) => span.name === "SELECT");
+    expect(server).toBeTruthy();
+    expect(database).toBeTruthy();
+    expect(database.parentSpanId).toBe(server.spanId);
+  }
+
   await firstTrace.getByRole("link").click();
   const dialog = page.locator("dialog[data-otel-dialog]");
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".otel-spans > li")).toHaveCount(6);
+  await expect(dialog.locator(".otel-spans > li")).toHaveCount(expectedWorkSpanCount);
   await expect(dialog).toContainText("HTTP GET /upstream");
-  await expect(dialog).toContainText("SELECT demo readiness");
+  if (wovenDatabase) {
+    await expect(dialog).toContainText("SELECT");
+  } else {
+    await expect(dialog).not.toContainText("SELECT demo readiness");
+  }
   await expect(dialog).toContainText("demo.jobs process");
   await expect(dialog).toContainText("Parent");
   expect(page.url()).toBe(initialURL);
@@ -105,7 +123,7 @@ test("the workbench remains functional without JavaScript", async ({browser, bas
     await expect(trace).toContainText("HTTP POST /work");
     await trace.getByRole("link").click();
     await expect(page.getByRole("link", {name: "All traces"})).toBeVisible();
-    await expect(page.locator(".otel-spans > li")).toHaveCount(6);
+    await expect(page.locator(".otel-spans > li")).toHaveCount(expectedWorkSpanCount);
     await page.getByRole("link", {name: "All traces"}).click();
     await expect(page.getByRole("heading", {name: "Recent traces"})).toBeVisible();
   } finally {

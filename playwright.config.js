@@ -42,13 +42,13 @@ module.exports = defineConfig({
     },
     {
       name: "docs",
-      testMatch: /storyboard\.screenshots\.spec\.js/,
+      testMatch: /\/storyboard\.screenshots\.spec\.js$/,
       outputDir: "docs/screenshots/test-artifacts",
       use: {...devices["Desktop Chrome"]},
     },
     {
       name: "agent-docs",
-      testMatch: /agent-storyboard\.screenshots\.spec\.js/,
+      testMatch: /\/agent-storyboard\.screenshots\.spec\.js$/,
       outputDir: "docs/screenshots/test-artifacts",
       use: {...devices["Desktop Chrome"], viewport: {width: 1440, height: 1400}},
     },

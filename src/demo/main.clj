@@ -314,6 +314,12 @@
 (defn- viewer-trace-id-path [path]
   (second (re-matches #"/traces/([0-9a-f]{32})" path)))
 
+(defn- instrumentation-suppressed-fn [f]
+  ;; SSE bodies render later on jolt-http's writer thread. Capture the generic
+  ;; suppression context now instead of relying on a request-thread binding.
+  (context/with-instrumentation-suppressed
+    (context/bind-fn f)))
+
 (def ^:private editor-paths
   #{"/plotje-editor" "/plotje-editor/preview" "/assets/plotje-editor.js"
     "/hiccup-editor" "/hiccup-editor/preview" "/assets/hiccup-editor.js"})
@@ -342,16 +348,11 @@
         (contains? otlp-receiver/receiver-paths path) path
         :else "/*")))
 
-(defn- database-work! [connection tracer]
-  (trace/with-span [span tracer "SELECT demo readiness"
-                    {:kind :internal
-                     :attributes {:db.system.name "clickhouse"
-                                  :db.namespace "default"
-                                  :db.operation.name "SELECT"}}]
-    (let [ready (value-of (first (jdbc/fetch connection "SELECT 1 AS ready"))
-                          :ready)]
-      (trace/set-attribute! span :demo.db.ready ready)
-      ready)))
+(defn- database-work! [connection]
+  ;; This deliberately contains no OTel code. A plain source run executes the
+  ;; query unchanged; a compiler-aspect build selects jolt-lang/db's inert
+  ;; manifest and the reusable DB consumer creates the duration span.
+  (value-of (first (jdbc/fetch connection "SELECT 1 AS ready")) :ready))
 
 (defn- queue-work! [tracer logger propagator]
   ;; The envelope is deliberately ordinary data. Injecting and extracting the
@@ -381,7 +382,7 @@
 (defn- real-work! [{:keys [connection port tracer logger propagator]}]
   (logs/emit! logger {:body "calling loopback upstream" :severity :info
                       :attributes {:http.route "/work"}})
-  (database-work! connection tracer)
+  (database-work! connection)
   (queue-work! tracer logger propagator)
   (trace/with-span [client-span tracer "HTTP GET /upstream"
                     {:kind :client
@@ -770,13 +771,14 @@
           (if (demo-datastar/sse-request? request)
             (demo-datastar/stream-response
              stream-state
-             #(let [now (now-nanos-fn)]
-                (viewer/render-live-content
-                 {:eyebrow "OpenTelemetry · embedded chDB"
-                  :enhancement-path "/assets/otel-viewer.js"
-                  :summary (summary-fn)
-                  :traces (filtered-traces-fn selection now)
-                  :logs (logs-fn)})))
+             (instrumentation-suppressed-fn
+              #(let [now (now-nanos-fn)]
+                 (viewer/render-live-content
+                  {:eyebrow "OpenTelemetry · embedded chDB"
+                   :enhancement-path "/assets/otel-viewer.js"
+                   :summary (summary-fn)
+                   :traces (filtered-traces-fn selection now)
+                   :logs (logs-fn)}))))
             (let [now (now-nanos-fn)]
               (html-response
                (viewer/render-page
@@ -860,8 +862,19 @@
                                         "/agent-work-with-response"
                                         "/agent-work-intervention"} route)
                            (str/starts-with? route "/api/"))
+             telemetry-storage-route?
+             (and (= :get request-method)
+                  (or (= route "/")
+                      (= route "/traces/:trace-id")
+                      (str/starts-with? route "/api/")
+                      (contains? #{(:oscope-path app)
+                                   (oscope-web/export-path (:oscope-path app))}
+                                 route)))
              response (if untraced?
-                        (dispatch request)
+                        (if telemetry-storage-route?
+                          (context/with-instrumentation-suppressed
+                            (dispatch request))
+                          (dispatch request))
                         (let [parent (propagation/extract propagator context/root
                                                           (or (:headers request) {}))]
                           (trace/with-span [span tracer (str "HTTP " method " " route)

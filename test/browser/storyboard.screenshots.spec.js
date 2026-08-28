@@ -22,7 +22,7 @@ test("capture the initial workbench and live trace story", async ({page}) => {
   await trace.getByRole("link").click();
   const dialog = page.locator("dialog[data-otel-dialog]");
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".otel-spans > li")).toHaveCount(6);
+  await expect(dialog.locator(".otel-spans > li")).toHaveCount(5);
   await dialog.screenshot({path: path.join("docs", "screenshots",
                                            "03-trace-waterfall-dialog.png")});
   await page.keyboard.press("Escape");

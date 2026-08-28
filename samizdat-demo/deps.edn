@@ -16,6 +16,8 @@
  {:embed ["../resources" "../../samizdat-embed-aspects/resources"]
   :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
              :provider demo.aspect-provider}
+            {:resource "META-INF/jolt/aspects/db-jdbc-shim.edn"
+             :provider otel.instrumentation.db}
             {:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
              :provider demo.samizdat-aspect-provider}
             {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"

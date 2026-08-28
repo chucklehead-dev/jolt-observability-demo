@@ -8,13 +8,16 @@
          :git/sha "eba91d0536fee73ee192f68676915e48be23b348"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "9d5ba0a95f79e839b8292b2e5e70c6ee3716e7be"}
+         :git/sha "cac3cbcf1e7101c0a893c3aaffa5a3154c0f766b"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
-         :git/sha "fffaf33208d9404ff4f8e48ecf6d8f9ca03a62c3"}
+         :git/sha "6321a0a23a06e396c684d303f3cb4d31bebc8d9f"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
-         :git/sha "c1d4aad8188811258dda7d777808649255b13cbc"}
+         :git/sha "594b280c460155a9e5f11da9deb7784fb1f3a670"}
+        io.github.chucklehead-dev/jolt-otel-instrumentation-db
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
+         :git/sha "9b4db4a4ae15d6fdb7b07e7fda1f0eed9db11a21"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
@@ -33,7 +36,9 @@
 
  :jolt/build {:embed ["resources"]
               :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
-                         :provider demo.aspect-provider}]
+                         :provider demo.aspect-provider}
+                        {:resource "META-INF/jolt/aspects/db-jdbc-shim.edn"
+                         :provider otel.instrumentation.db}]
               :aspect-report "target/aspects.edn"}
 
  :aliases {:setup-native {:main-opts ["-m" "jdbc.chdb.install"]}

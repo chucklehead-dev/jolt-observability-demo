@@ -22,9 +22,11 @@ esac
 cd "$repo"
 run_jolt build -m demo.main -o "$output_path"
 DEMO_SERVER_COMMAND="$output_path" \
+  DEMO_EXPECT_WOVEN_DB=1 \
   npx playwright test --project=chromium
 
 test -s target/aspects.edn
 grep -q ':demo.workbench/run-script' target/aspects.edn
+grep -q ':db.jdbc-shim/execute' target/aspects.edn
 
 echo "PASS: woven demo browser story"

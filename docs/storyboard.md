@@ -16,11 +16,10 @@ marker. The enhancement opens one same-origin EventSource.
 
 Select **Generate work**. With JavaScript, the POST returns 204 and the page
 must not navigate or reload. A durable SSE patch adds the newest trace and logs.
-The workload records six parent-linked spans:
+The ordinary source workload records five parent-linked spans:
 
 ```text
 HTTP POST /work
-  +-- SELECT demo readiness
   +-- demo.jobs publish
   |    `-- demo.jobs process
   `-- HTTP GET /upstream
@@ -30,15 +29,18 @@ HTTP POST /work
 The DB query executes against embedded chDB. The queue handoff injects and
 extracts W3C Trace Context through an ordinary envelope, modeling the boundary
 used by an fs-backed or cross-process queue. The HTTP client/server pair uses a
-real loopback request.
+real loopback request. In the compiler-woven artifact, the exact same query
+gains a sixth `SELECT` span through the provider-neutral DB manifest; there is
+no handwritten DB span in the application.
 
 ![Live trace arrival](screenshots/02-live-trace-arrives.png)
 
 ## 3. Inspect and dismiss the trace
 
 Open the newest trace. Progressive enhancement loads its server-rendered detail
-into a native dialog without changing the index URL. Verify the six-span tree,
-timeline, parent metadata, DB and messaging operations, and correlated logs.
+into a native dialog without changing the index URL. Verify the five-span
+source tree (or six-span woven tree), timeline, parent metadata, messaging
+operations, and correlated logs.
 Escape closes the dialog and returns focus to the workbench.
 
 ![Trace waterfall dialog](screenshots/03-trace-waterfall-dialog.png)
@@ -67,15 +69,16 @@ body begins with the Parquet `PAR1` signature. The complete trace, span, log,
 and error summary remains byte-for-byte equivalent before and after viewing,
 querying, and downloading, so the utility cannot recursively observe itself.
 
-## Future beats
+## Compiler-woven beat
 
-- Build the demo with selected instrumentation aspects and prove the generated
-  DB and HTTP spans replace the handwritten equivalents; see
-  [instrumented-build-spike.md](instrumented-build-spike.md).
+`npm run test:browser:aspect` builds the same application with selected
+instrumentation aspects. It proves the generated DB span replaces the removed
+handwritten span. A reusable HTTP package remains the next equivalent slice;
+see [instrumented-build-spike.md](instrumented-build-spike.md).
 
 The persistent browser gate runs the ordinary live-update story, terminates the
 Jolt process, starts a second process over the same temporary `chdb:` path, and
-opens the exact previously captured six-span trace. It also rejects the native
+opens the exact previously captured five-span source trace. It also rejects the native
 ClickHouse `ThreadStatus` diagnostic in both process transcripts:
 
 ```sh

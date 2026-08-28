@@ -17,12 +17,14 @@ jolt -m demo.main
 ```
 
 Open <http://127.0.0.1:8080/> and select **Generate work**. The resulting trace
-contains six parent-linked spans across an embedded DB query, a propagated
-producer/consumer queue handoff, and a real loopback HTTP client/server boundary,
-with correlated logs. Traces and logs appear in the open page through a bounded
-SSE stream; the page remains usable without JavaScript.
+contains five parent-linked spans across a propagated producer/consumer queue
+handoff and a real loopback HTTP client/server boundary, with correlated logs.
+The compiler-woven build adds a sixth DB span around the unchanged embedded
+query through the library-owned `jolt-lang/db` manifest and the separately
+published OTel consumer. Traces and logs appear in the open page through a
+bounded SSE stream; the page remains usable without JavaScript.
 
-![Trace waterfall with DB, queue, and HTTP spans](docs/screenshots/03-trace-waterfall-dialog.png)
+![Trace waterfall with queue and HTTP spans](docs/screenshots/03-trace-waterfall-dialog.png)
 
 For the Samizdat-shaped model trace, point the demo at an OpenAI-compatible
 Lemonade server and use either model action in the header:
@@ -202,6 +204,11 @@ JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
 JOLT_CHDB_LIB=/path/to/libchdb.so \
   npm run test:browser:aspect
 ```
+
+That gate proves the plain source story has five spans, the woven story has six,
+the generated `SELECT` span is a direct child of the request span, and exporter,
+schema, explorer, API, viewer, and deferred SSE work cannot feed back through
+database auto-instrumentation.
 
 ## Receive OTLP
 

@@ -125,13 +125,13 @@ the exact `[result native-error]` pair.
 
 ## Next contracts and packages
 
-1. Add a function-entry selector for supplied callbacks and higher-order
-   library seams that have no stable resolved call site in the owning library.
+1. Extend the now-tested fixed-arity function-entry selector only when a real
+   anonymous, variadic, or generated-method seam requires a new contract.
 2. Specify async completion and cross-thread lifecycle ownership before
    instrumenting Ring response completion or other callback-driven operations.
-3. Publish provider-neutral manifests and reusable OTel consumers for the
-   shared DB SPI, `jolt-http`, and `http-client`; then remove corresponding
-   handwritten demo spans.
+3. The shared DB SPI manifest and reusable OTel consumer are published and the
+   demo's handwritten DB span is removed. Repeat the pattern for `jolt-http`
+   and `http-client` without weakening source-mode behavior.
 4. Keep Kindly presentation advisers beside each instrumentation vocabulary,
    while leaving stored telemetry and generic viewer APIs presentation-free.
 
@@ -152,6 +152,6 @@ the exact `[result native-error]` pair.
 - Library-supplied presentation advice follows Kindly scalar wrapping and
   metadata rules, is bounded by the host, and never enters persisted telemetry.
 
-The reusable DB and HTTP packages and async server lifecycle remain acceptance
-gates for the next phase; the synchronous compiler and Samizdat integration no
-longer depend on a proposed or private compiler hook.
+The reusable HTTP packages and async server lifecycle remain acceptance gates
+for the next phase. The DB package, synchronous compiler, and Samizdat
+integration no longer depend on a proposed or private compiler hook.

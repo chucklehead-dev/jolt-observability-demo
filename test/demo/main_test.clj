@@ -10,6 +10,7 @@
             [jolt.http.body :as http-body]
             [jolt.http.server :as http-server]
             [jdbc.core :as jdbc]
+            [otel.context :as context]
             [otel.exporter.chdb.explorer :as explorer]
             [otel.otlp.http-receiver :as otlp-receiver]
             [otel.sdk.export :as export]
@@ -626,6 +627,32 @@
     (is (nil? (http-body/write-body-to-sink (:body response) response sink)))
     (is (= 0 @(:active state)))))
 
+(deftest viewer-queries-and-deferred-sse-rendering-suppress-instrumentation
+  (let [seen (atom [])
+        observe (fn [value]
+                  (swap! seen conj (context/instrumentation-suppressed?))
+                  value)
+        app (assoc (test-app)
+                   :summary-fn #(observe sample-summary)
+                   :filtered-traces-fn (fn [_ _] (observe sample-traces))
+                   :logs-fn #(observe sample-logs))
+        h (demo/handler app)]
+    (is (= 200 (:status (h {:request-method :get :uri "/api/summary"}))))
+    (let [response (h {:request-method :get :uri "/"
+                       :query-string "datastar-sse=true" :headers {}})
+          writer (future
+                   (http-body/write-body-to-sink
+                    (:body response) response
+                    (reify http-body/Sink
+                      (sink-write! [_ _ _ _]
+                        (throw (ex-info "done"
+                                        {:jolt.net/kind :connection-reset})))
+                      (sink-close! [_] nil))))]
+      (is (nil? (deref writer 2000 ::timeout))))
+    (is (seq @seen))
+    (is (every? true? @seen)
+        "synchronous APIs and writer-thread SSE snapshots share suppression")))
+
 (deftest live-sse-crosses-the-real-http-server-before-close
   (let [port (next-live-test-port)
         lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
@@ -754,7 +781,6 @@
                                               {:conn-timeout 2000 :socket-timeout 5000}))
               spans (:spans detail)
               server (some #(when (= "HTTP GET /work" (:name %)) %) spans)
-              database (some #(when (= "SELECT demo readiness" (:name %)) %) spans)
               producer (some #(when (= "demo.jobs publish" (:name %)) %) spans)
               consumer (some #(when (= "demo.jobs process" (:name %)) %) spans)
               client (some #(when (and (= "HTTP GET /upstream" (:name %))
@@ -762,10 +788,9 @@
               upstream (some #(when (and (= "HTTP GET /upstream" (:name %))
                                          (= "server" (:kind %))) %) spans)]
           (is (= "HTTP GET /work" (:rootSpan summary)))
-          (is (= 6 (count spans))
-              "one trace contains DB, queue propagation, and both HTTP edges")
+          (is (= 5 (count spans))
+              "plain source execution contains queue propagation and both HTTP edges")
           (is (= remote-span-id (:parentSpanId server)))
-          (is (= (:spanId server) (:parentSpanId database)))
           (is (= (:spanId server) (:parentSpanId producer)))
           (is (= (:spanId producer) (:parentSpanId consumer)))
           (is (= (:spanId server) (:parentSpanId client)))
@@ -777,7 +802,7 @@
             (is (= 200 (:status page)))
             (is (str/includes? (:body page) "<details open>"))
             (is (str/includes? (:body page) "HTTP GET /upstream"))
-            (is (str/includes? (:body page) "SELECT demo readiness"))
+            (is (not (str/includes? (:body page) "SELECT demo readiness")))
             (is (str/includes? (:body page) "demo.jobs process"))
             (is (not (str/includes? (:body page) "<script"))))
           (let [before-post (:traceCount (decode (http-client/get (str base "/api/summary"))))

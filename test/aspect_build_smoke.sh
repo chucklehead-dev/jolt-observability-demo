@@ -14,7 +14,13 @@ run_jolt() {
 }
 
 cd "$repo"
-run_jolt -Sdeps '{:paths ["src" "resources" "test"]}' \
+run_jolt -Sdeps \
+  '{:paths ["src" "resources" "test"]
+    :jolt/build
+    {:embed ["resources"]
+     :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
+                :provider demo.aspect-provider}]
+     :aspect-report "target/aspects.edn"}}' \
   build -m demo.aspect-smoke -o target/aspect-smoke
 output=$(target/aspect-smoke)
 
