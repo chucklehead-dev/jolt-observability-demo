@@ -70,6 +70,28 @@ For persistent data, prefer a map dbspec from an embedding application. The
 standalone demo also accepts a `chdb:` URI through `DEMO_CHDB_SPEC`; the demo
 does not delete persistent data.
 
+## Run workbench (fixture)
+
+`GET /workbench` is a separate, self-contained page: enter a prompt and watch
+one run evolve through ordered semantic-stage events — `run-opened`,
+`turn-started`, `model-requested`, `tool-dispatched`, `tool-completed`,
+`controller-decided`, `run-closed` — down to a terminal response and capture
+state. State lives in a `glimmer.ratom` cell; `jolt.datastar.core` streams
+live updates over SSE scoped to that one route.
+
+**This is a fixture, not a Samizdat integration.** `demo.workbench-fixture`
+is a deterministic, offline, hand-scripted stand-in shaped like a Samizdat
+control-loop run — it never opens a socket, reads an environment variable, or
+names a physical host. It tells the same paranoid-android stale-dashboard and
+square-root-of-minus-one story as `test/browser/model-fixture-server.js`.
+`demo.workbench-fixture/RunAdapter` is the seam a real Samizdat-backed
+adapter would implement to replace it, without changing the route, state
+machine, or rendering layer.
+
+`/workbench` GET, POST, and SSE traffic is excluded from application
+instrumentation the same way `/`, `/traces/*`, and the agent-demo routes are,
+so viewing or driving the workbench cannot feed telemetry back into itself.
+
 ## Receive OTLP
 
 The server accepts OTLP/HTTP JSON on:

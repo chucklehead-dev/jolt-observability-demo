@@ -5,6 +5,8 @@
             [demo.datastar :as demo-datastar]
             [demo.otlp :as demo-otlp]
             [demo.samizdat-kindly :as samizdat-kindly]
+            [demo.workbench :as workbench]
+            [demo.workbench-fixture :as workbench-fixture]
             [jdbc.chdb]
             [jdbc.core :as jdbc]
             [jolt.http-client :as http-client]
@@ -299,7 +301,9 @@
         (str/starts-with? path "/api/traces/") "/api/traces/:trace-id"
         (= path "/api/logs") "/api/logs"
         (= path "/assets/otel-viewer.js") "/assets/otel-viewer.js"
+        (= path "/assets/workbench.js") "/assets/workbench.js"
         (str/starts-with? path "/traces/") "/traces/:trace-id"
+        (= path "/workbench") "/workbench"
         (= path "/work") "/work"
         (= path "/agent-work") "/agent-work"
         (= path "/agent-work-with-response") "/agent-work-with-response"
@@ -593,7 +597,7 @@
            now-nanos-fn trace-fn logs-fn work-fn agent-work-fn
            agent-intervention-work-fn otlp-handler
            lemonade-base-url lemonade-model lemonade-telemetry-address
-           lemonade-disable-thinking?]
+           lemonade-disable-thinking? workbench-state workbench-adapter]
     :or {port 8080}}]
   (let [now-nanos-fn (or now-nanos-fn #(* (System/currentTimeMillis) 1000000))
         traces-fn (or traces-fn #(query-traces connection))
@@ -647,7 +651,9 @@
                                str/lower-case)))
        lemonade-disable-thinking?)
      :otlp-handler (or otlp-handler
-                       (fn [_] (error-response 503 "OTLP receiver unavailable")))}))
+                       (fn [_] (error-response 503 "OTLP receiver unavailable")))
+     :workbench-state (or workbench-state (workbench/state))
+     :workbench-adapter (or workbench-adapter (workbench-fixture/adapter))}))
 
 (defn raw-handler [{:keys [summary-fn traces-fn filtered-traces-fn
                            trace-filter-options-fn now-nanos-fn trace-fn logs-fn
@@ -690,6 +696,10 @@
           {:status 502 :headers html-headers
            :body (viewer/render-page {:title "Agent demo failed"
                                       :summary {} :traces [] :logs []})}))
+
+      (and (= :post request-method) (= uri "/workbench"))
+      (workbench/post-run! (:workbench-state app) (:workbench-adapter app)
+                           request)
 
       (not= :get request-method) (error-response 405 "method not allowed")
 
@@ -743,6 +753,9 @@
           (error-response 400 "trace id must be 32 lowercase hex characters"))
         (= uri "/assets/otel-viewer.js")
         {:status 200 :headers javascript-headers :body (viewer/enhancement-script)}
+        (= uri "/workbench")
+        (workbench/get-page (:workbench-state app) request)
+        (= uri "/assets/workbench.js") (workbench/asset-response)
         (= uri "/api/summary") (json-response (summary-fn))
         (= uri "/api/traces")
         (let [selection (trace-filter-selection query-string)]
@@ -775,6 +788,8 @@
                            (= route "/")
                            (= route "/traces/:trace-id")
                            (= route "/assets/otel-viewer.js")
+                           (= route "/workbench")
+                           (= route "/assets/workbench.js")
                            (contains? #{"/agent-work"
                                         "/agent-work-with-response"
                                         "/agent-work-intervention"} route)
@@ -829,6 +844,8 @@
                          (let [first-error (atom nil)]
                            (doseq [cleanup [#(demo-datastar/stop-streams!
                                               (:stream-state app))
+                                            #(workbench/stop!
+                                              (:workbench-state app))
                                             #(http-server/stop-server server)
                                             #(sdk/shutdown! otel)
                                             #(.close conn)]]

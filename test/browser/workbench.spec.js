@@ -61,6 +61,34 @@ test("generated telemetry streams into the workbench without navigation", async 
   assertNoBrowserErrors();
 });
 
+test("a /workbench run evolves live via SSE to a terminal response", async ({page}) => {
+  const assertNoBrowserErrors = guardBrowserErrors(page);
+  const streamResponse = page.waitForResponse((response) =>
+    response.url().includes("datastar-sse=true") &&
+    response.url().includes("workbench-live") &&
+    response.status() === 200);
+  await page.goto("/workbench");
+  await streamResponse;
+
+  await expect(page.getByRole("heading", {name: "Run workbench"})).toBeVisible();
+  await expect(page.getByText("No run yet. Enter a prompt above to start one.")).toBeVisible();
+
+  await page.getByLabel("Prompt").fill("diagnose the stale dashboard");
+  await page.getByRole("button", {name: "Run"}).click();
+  await page.waitForURL(/\/workbench$/);
+
+  await expect(page.locator(".workbench-events li").first())
+    .toContainText("Run opened", {timeout: 15000});
+  await expect(page.locator("p", {hasText: "Status:"}))
+    .toContainText("closed", {timeout: 15000});
+  await expect(page.locator("#workbench-live .otel-content pre"))
+    .toContainText("square root of -1");
+
+  await page.locator(".otel-header a.otel-back-link[href=\"/\"]").click();
+  await expect(page).toHaveURL(/\/$/);
+  assertNoBrowserErrors();
+});
+
 test("the workbench remains functional without JavaScript", async ({browser, baseURL}) => {
   const context = await browser.newContext({javaScriptEnabled: false});
   const page = await context.newPage();
