@@ -60,11 +60,18 @@ instead of treating progressive enhancement as the only application.
 
 ## Future beats
 
-- Restart the fixture against the same temporary `chdb:` path and prove the
-  trace survives.
 - Build the demo with selected instrumentation aspects and prove the generated
   DB and HTTP spans replace the handwritten equivalents; see
   [instrumented-build-spike.md](instrumented-build-spike.md).
+
+The persistent browser gate runs the ordinary live-update story, terminates the
+Jolt process, starts a second process over the same temporary `chdb:` path, and
+opens the exact previously captured six-span trace. It also rejects the native
+ClickHouse `ThreadStatus` diagnostic in both process transcripts:
+
+```sh
+npm run test:browser:persistent
+```
 
 ## Agent/model privacy and controller story
 

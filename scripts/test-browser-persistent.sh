@@ -9,3 +9,4 @@ trap cleanup EXIT INT TERM
 
 export DEMO_CHDB_SPEC="chdb:$test_db_root/chdb"
 npm run test:browser
+npm run test:browser:restart

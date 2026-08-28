@@ -132,6 +132,10 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   console/page errors, verifies the dialog without navigation, and separately
   runs the zero-JavaScript POST/303/detail/back path. The documentation capture
   reuses the same semantic story.
+- The persistent Playwright gate records a trace in a filesystem-backed chDB,
+  terminates the complete Jolt process, starts a second process over the same
+  path, and opens that exact trace with all six spans. Both process transcripts
+  must remain free of the native ClickHouse `ThreadStatus` diagnostic.
 - An optional live-model Playwright project calls all three agent routes,
   verifies the one- and two-turn control-loop hierarchy and privacy state,
   captures docs screenshots, and rejects the configured physical model
