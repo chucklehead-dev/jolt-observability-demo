@@ -57,6 +57,9 @@ test("record the real embedded Samizdat coding trace", async ({page, request}) =
 
   const tool = dialog.locator(".otel-spans > li:has(.otel-role-tool)").last();
   await expect(tool).toBeVisible();
+  await tool.locator("summary").first().click();
+  await expect(tool).toContainText("Captured arguments");
+  await expect(tool).toContainText("Captured result");
   await tool.scrollIntoViewIfNeeded();
   await pause(2200);
 

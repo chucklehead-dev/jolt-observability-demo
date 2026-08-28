@@ -53,6 +53,7 @@ done
    HARNESS_PROVIDER=local \
    HARNESS_BASE_URL="http://127.0.0.1:$model_port/v1" \
    HARNESS_MODEL=samizdat-coding-fixture \
+   DEMO_CAPTURE_CONTENT="${DEMO_CAPTURE_CONTENT:-0}" \
    DEMO_CAPTURE_MODEL_CONTENT="${DEMO_CAPTURE_MODEL_CONTENT:-0}" \
    JOLT_CHDB_LIB="${JOLT_CHDB_LIB:?set JOLT_CHDB_LIB to libchdb.so}" \
    "$binary") >"$scratch/demo.log" 2>&1 &

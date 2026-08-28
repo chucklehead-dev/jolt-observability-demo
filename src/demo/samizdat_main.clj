@@ -17,6 +17,13 @@
   (contains? #{"1" "true" "yes"}
              (some-> (System/getenv name) str/trim str/lower-case)))
 
+(defn- capture-content? []
+  ;; Keep the original model-specific switch as a compatibility alias. Tool
+  ;; arguments/results use the same bounded redaction policy, so the preferred
+  ;; name describes the complete opt-in boundary.
+  (or (env-true? "DEMO_CAPTURE_CONTENT")
+      (env-true? "DEMO_CAPTURE_MODEL_CONTENT")))
+
 (defn- configured-redactor []
   (let [terms (->> (str/split (or (System/getenv "DEMO_REDACT_TERMS") "") #",")
                    (map str/trim)
@@ -56,7 +63,7 @@
                   (merge {:start-timeout-ms 10000
                           :display-redact redact
                           :otel-content-policy
-                          {:capture? (env-true? "DEMO_CAPTURE_MODEL_CONTENT")
+                          {:capture? (capture-content?)
                            :max-chars (env-long "DEMO_CAPTURE_MAX_CHARS" 2048)
                            :redact redact}}
                          run-options))]

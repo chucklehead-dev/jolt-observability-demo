@@ -43,8 +43,10 @@ hierarchy and usage without content. **Run model (show exchange)** explicitly
 records the bounded prompt and assistant response after stripping common
 delimited thinking output. **Run multi-turn intervention** records the first
 answer, a controller revision, and a second model turn in one parent-linked
-trace. Credentials and tool arguments are never recorded; thinking is disabled
-by default.
+trace. Credentials and tool arguments are never recorded by default; thinking
+is disabled by default. In explicit capture mode, the same bounded redaction
+policy also records the arguments and returned envelope for each tool call, and
+the trace viewer presents them as a Samizdat-supplied Kindly card.
 
 Samizdat presentation policy lives beside its instrumentation vocabulary in
 `demo.samizdat-kindly`. It annotates values with Kindly's standard
@@ -122,11 +124,12 @@ explicit `:replace-args-v1` contract, without modifying that library. Launching
 from the target project is required for Samizdat's relative `eval` and file semantics;
 `scripts/run-samizdat-demo.sh` enforces that invariant.
 
-Model content is absent from telemetry by default. Set
-`DEMO_CAPTURE_MODEL_CONTENT=1` only for a deliberate local demo; captured
-prompt/response text remains bounded by `DEMO_CAPTURE_MAX_CHARS` and can be
-filtered with comma-separated `DEMO_REDACT_TERMS`. Physical endpoints, API
-keys, tool arguments, and tool results are never captured by this provider.
+Model and tool content are absent from telemetry by default. Set
+`DEMO_CAPTURE_CONTENT=1` only for a deliberate local demo; captured
+prompt/response text and tool argument/result summaries remain bounded by
+`DEMO_CAPTURE_MAX_CHARS` and can be filtered with comma-separated
+`DEMO_REDACT_TERMS`. Physical endpoints and API keys are never captured by
+this provider. `DEMO_CAPTURE_MODEL_CONTENT=1` remains a compatibility alias.
 
 The deterministic compiled-binary proof runs a real coding loop that creates
 and claims a task, reads source and tests, edits the source, runs the

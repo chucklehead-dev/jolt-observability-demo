@@ -102,8 +102,11 @@ and assistant response after common delimited thinking output is stripped. The
 third runs two model turns on a concrete coding task: a controller rejects a
 cursor-reset patch because it would replay delivered rows, supplies the missing
 SSE reconnect invariants, and the agent revises the patch and race test.
-Physical model hostnames, credentials, and tool arguments remain absent in
-every mode; provider thinking is disabled by default.
+Physical model hostnames and credentials remain absent in every mode; provider
+thinking is disabled by default. Model content and tool argument/result
+summaries are absent in the metadata-only mode. Explicit capture mode records
+only their bounded, redacted forms and renders tool calls with library-supplied
+Kindly cards.
 
 Run it with an endpoint reachable from the demo process and a neutral telemetry
 display address so private hostnames never enter checked-in screenshots:

@@ -5,7 +5,7 @@ repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$repo"
 
 env SAMIZDAT_PLAYWRIGHT_CONFIG="$repo/playwright.samizdat-gif.config.js" \
-    DEMO_CAPTURE_MODEL_CONTENT=1 \
+    DEMO_CAPTURE_CONTENT=1 \
     test/samizdat_playwright_e2e.sh
 
 ffmpeg -hide_banner -loglevel error -y \

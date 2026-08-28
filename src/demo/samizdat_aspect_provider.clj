@@ -19,7 +19,7 @@
 (def ^:private scope-name "io.github.yogthos/samizdat.auto")
 
 (def max-content-chars
-  "Hard ceiling for any captured prompt or response attribute."
+  "Hard ceiling for any captured prompt, response, or tool-detail attribute."
   4096)
 
 (def default-content-policy
@@ -33,9 +33,10 @@
 (defn content-policy
   "Validate a bounded opt-in content policy.
 
-  `:capture? true` enables prompt/response attributes. `:max-chars` must be
-  between 1 and 4096. `:redact` may be a pure string -> string function; it is
-  applied before truncation. A redactor failure emits no content."
+  `:capture? true` enables prompt/response and tool argument/result attributes.
+  `:max-chars` must be between 1 and 4096. `:redact` may be a pure string ->
+  string function; it is applied before truncation. A redactor failure emits
+  no content."
   [{:keys [capture? max-chars redact] :as opts}]
   (let [unknown (seq (remove #{:capture? :max-chars :redact} (keys opts)))
         max-chars (or max-chars (:max-chars default-content-policy))]

@@ -40,7 +40,7 @@ done
    DEMO_SAMIZDAT_ROOT="$scratch/project" \
    DEMO_SAMIZDAT_DB="$scratch/samizdat.sqlite3" \
    DEMO_CHDB_SPEC=chdb::memory: \
-   DEMO_CAPTURE_MODEL_CONTENT=1 \
+   DEMO_CAPTURE_CONTENT=1 \
    DEMO_CAPTURE_MAX_CHARS=2048 \
    HARNESS_PROVIDER=local \
    HARNESS_BASE_URL="http://127.0.0.1:$model_port/v1" \
