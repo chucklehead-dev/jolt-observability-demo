@@ -3,9 +3,18 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 jolt=${JOLT_ASPECT_BIN:?set JOLT_ASPECT_BIN to a Jolt build with compiler aspects}
+toolchain=${JOLT_TOOLCHAIN:-}
+
+run_jolt() {
+  if [ -n "$toolchain" ]; then
+    "$toolchain" "$jolt" "$@"
+  else
+    "$jolt" "$@"
+  fi
+}
 
 cd "$repo"
-"$jolt" -Sdeps '{:paths ["src" "resources" "test"]}' \
+run_jolt -Sdeps '{:paths ["src" "resources" "test"]}' \
   build -m demo.aspect-smoke -o target/aspect-smoke
 output=$(target/aspect-smoke)
 

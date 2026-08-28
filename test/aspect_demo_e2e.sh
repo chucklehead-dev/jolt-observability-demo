@@ -3,7 +3,16 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 jolt=${JOLT_ASPECT_BIN:?set JOLT_ASPECT_BIN to a Jolt build with compiler aspects}
+toolchain=${JOLT_TOOLCHAIN:-}
 output=${JOLT_ASPECT_DEMO_BIN:-target/observability-demo-aspect}
+
+run_jolt() {
+  if [ -n "$toolchain" ]; then
+    "$toolchain" "$jolt" "$@"
+  else
+    "$jolt" "$@"
+  fi
+}
 
 case "$output" in
   /*) output_path=$output ;;
@@ -11,7 +20,7 @@ case "$output" in
 esac
 
 cd "$repo"
-"$jolt" build -m demo.main -o "$output_path"
+run_jolt build -m demo.main -o "$output_path"
 DEMO_SERVER_COMMAND="$output_path" \
   npx playwright test --project=chromium
 

@@ -188,6 +188,7 @@ The native adapters consume the same screen without a second UI schema. See
 [docs/plotje-portability.md](docs/plotje-portability.md).
 
 ```sh
+JOLT_TOOLCHAIN=/absolute/path/to/jolt-with-chez-10.4.1 \
 JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
   test/aspect_build_smoke.sh
 ```
@@ -196,6 +197,7 @@ Build the complete woven server and run the same Playwright live-update,
 workbench, and no-JavaScript story against that standalone executable with:
 
 ```sh
+JOLT_TOOLCHAIN=/absolute/path/to/jolt-with-chez-10.4.1 \
 JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
 JOLT_CHDB_LIB=/path/to/libchdb.so \
   npm run test:browser:aspect
