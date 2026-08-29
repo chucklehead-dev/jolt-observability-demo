@@ -1,7 +1,10 @@
 .jolt/
 .jolt-cache/
+.cpcache/
 node_modules/
 playwright-report/
 test-results/
+/target/
+/.data/
 docs/screenshots/test-artifacts/
 docs/screenshots/agent-gif-artifacts/

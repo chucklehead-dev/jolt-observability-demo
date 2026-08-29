@@ -1,11 +1,14 @@
 # On-demand instrumentation spike
 
-Status: proposed proof, 2026-08-27. This document defines an experiment; Jolt
-does not yet expose the required supported compiler extension point.
+Status: synchronous call-site and fixed-arity function-entry V1 implemented
+and integration-gated, 2026-08-28. The reusable DB, HTTP client, and HTTP
+server packages are published. The Ring provider now owns callback completion
+and a post-span completion hook without adding an async primitive to the
+compiler contract.
 
 ## Goal
 
-Build the demo in two modes from the same application and library sources:
+Build applications in two modes from the same application and library sources:
 
 - a plain artifact with no OpenTelemetry dependency introduced into `db`,
   `jolt-http`, or `http-client`; and
@@ -21,19 +24,21 @@ not runtime var replacement or Linux-only eBPF probing.
 ## Ownership boundary
 
 Each base library owns an inert, provider-neutral EDN resource such as
-`META-INF/jolt/aspects/jolt-http.edn`. The manifest contains no executable forms
+`META-INF/jolt/aspects/http-server.edn`. The manifest contains no executable forms
 and names semantic roles rather than OTel namespaces:
 
 ```clojure
 {:schema 1
- :library {:id io.github.casselc/jolt-http
+ :library {:id casselc/jolt-http
            :version "<exact source revision>"}
  :aspects
- [{:id :http/server-request
-   :match {:ns jolt.http.protocol
-           :call jolt.http.protocol/invoke-handler
-           :arity 7}
+ [{:id :http/server-ring-handler
+   :match {:entry jolt.http.protocol/invoke-handler :arity 8}
    :advice-role :http/server
+   :expect {:matches 1}}
+  {:id :http/server-sanitized-response
+   :match {:entry jolt.http.protocol/sanitize-response :arity 1}
+   :advice-role :http/server-response
    :expect {:matches 1}}]}
 ```
 
@@ -49,91 +54,145 @@ attributes, privacy policy, and recommended rendering together while the
 viewer remains domain-neutral. The viewer-specific option namespace is only a
 layout vocabulary; payloads use ordinary `:kind/*` values.
 
-A possible application configuration is:
+The embedded Samizdat demo uses the implemented application configuration:
 
 ```clojure
-{:jolt/aspects
- [{:resource "META-INF/jolt/aspects/db.edn"
-   :provider io.github.chucklehead-dev/jolt-otel-instrumentation-db}
-  {:resource "META-INF/jolt/aspects/http-client.edn"
-   :provider io.github.chucklehead-dev/jolt-otel-instrumentation-http-client}]}
+{:jolt/build
+ {:aspects
+  [{:resource "META-INF/jolt/aspects/samizdat-m2-embed.edn"
+    :consumers
+    [{:provider demo.samizdat-journal-provider
+      :roles [:samizdat/run]}
+     {:provider demo.samizdat-aspect-provider
+      :roles :all}]}
+   {:resource "META-INF/jolt/aspects/samizdat-m2-core.edn"
+    :consumers
+    [{:provider demo.samizdat-journal-provider
+      :roles [:samizdat/control-loop :samizdat/branch-open
+              :samizdat/branch-close :samizdat/turn :samizdat/model
+              :samizdat/tool-selection :samizdat/tool :samizdat/steer]}
+     {:provider demo.samizdat-aspect-provider
+      :roles :all}]}]
+  :aspect-report "target/samizdat-aspects.edn"}}
 ```
+
+The manifests are published by the pinned Samizdat fork under
+`resources/META-INF/jolt/aspects/`; the demo no longer carries copies. Their
+compatibility id is the source revision whose entry and call-site surface they
+describe,
+while resource-only commits may advance independently. Samizdat itself has no
+OTel dependency.
+
+These are independent ordered consumers, not one hand-composed provider. The
+bounded journal is outermost and the OTel span is inner where both select a
+semantic role; the compiler owns that composition and records both consumers on
+the physical join point. The journal selects no HTTP role at all, while the
+specialized OTel consumer alone observes model HTTP. This role filter is part of
+the compiler configuration and report rather than transparent placeholder
+advice in the non-OTel package.
 
 ## Weaver contract
 
 The production weaver runs after macro expansion and name resolution, but
-before inference, inlining, direct linking, and tree shaking. It must:
+before inference, inlining, direct linking, and tree shaking. It:
 
-- match resolved namespaces, vars or calls, arity, and optional protocol
-  identity; never source line numbers;
-- fail the build when an aspect has zero or ambiguous matches, an unsupported
+- matches either a qualified fixed-arity function definition entry or a
+  resolved namespace, qualified call, and arity; never source line numbers;
+- fails the build when an aspect has zero or ambiguous matches, an unsupported
   schema, an incompatible library revision, or a missing provider role;
-- preserve source position metadata for stack traces;
-- emit a deterministic weave report listing each selected aspect and match;
-- include the weaver version, manifest bytes, provider mapping, and selected
+- preserves source position metadata for stack traces;
+- emits a deterministic weave report listing each selected aspect and match;
+- includes the weaver version, manifest bytes, provider mapping, and selected
   aspects in the AOT cache key so plain and instrumented artifacts cannot
   collide; and
-- statically link advice so ordinary optimization and dead-code elimination
+- statically links advice so ordinary optimization and dead-code elimination
   still apply.
 
-The minimal synchronous advice shape is conceptually
-`(around join-point normalized-input proceed)`. `proceed` is zero-arity and may
-be invoked exactly once. Application results and exception identity pass
-through unchanged. Instrumentation failures fail open by running the operation,
-but must not swallow an application exception.
+V1 has three synchronous contracts. `:proceed-v1` receives
+`[join-point proceed]`; `:args-v1` additionally receives the already-evaluated
+argument vector; `:replace-args-v1` may call `proceed` with an exact-arity
+replacement vector, which the demo uses to inject W3C Trace Context into the
+maintained HTTP client call. Arguments evaluate once. The target executes once.
+Its exact result or exception wins, and missing, repeated, or failing advice
+fails open without retrying an application operation that already began.
 
-Async advice additionally owns an explicit exactly-once completion token and
-may wrap callbacks. Ambient thread bindings are insufficient after a handler
-returns; use the existing `otel.context/bind-fn*` behavior when work crosses an
-executor boundary.
+V1 does not ask the compiler to understand async completion. The HTTP server
+provider uses `:replace-args-v1` to replace the normalized Ring handler with a
+wrapper that owns the existing `respond`/`raise` callbacks. It serializes their
+terminal decision, restores the captured OTel context, ends exactly once after
+the accepted callback, and then invokes an observational completion hook. That
+hook lets the embedded collector durably flush the completed server span before
+a redirect triggers the next viewer query. This is Ring callback completion,
+not proof that bytes reached the peer.
 
-## Demo proof sequence
+## Verified integration
 
-1. Weave the eager `db.driver/execute-handle` call in `db.jdbc-shim`. Record a
-   low-cardinality DB operation span without parameter values. Use `internal`
-   kind for embedded chDB and `client` for network PostgreSQL.
-2. Build and run a tiny plain/instrumented pair. Prove identical results,
-   identical thrown application exceptions, zero spans when plain, one span
-   when instrumented, and distinct cache/artifact identities under a normal
-   direct-linked release build.
-3. Weave the actual HTTP client request/attempt boundary, inject W3C
-   `traceparent`, and remove the handwritten client span from
-   `demo.main/real-work!`.
-4. Weave the HTTP server handler plus `respond`/`raise` lifecycle. Extract the
-   remote parent before calling the handler and end the span exactly once when
-   the response completes or fails, including async handlers.
-5. Compose selected libraries' pure Kindly advisers over the bounded trace
-   tree before HTML rendering. Prove the raw API is unchanged and an unknown
-   or unsupported kind degrades to ordinary span metadata.
-
-The target demo trace is:
+The current woven Samizdat artifact produces this real control-loop trace:
 
 ```text
-HTTP POST /work server
-  +-- db/execute
-  `-- HTTP GET /upstream client
-       `-- HTTP GET /upstream server
-            `-- db/execute or queue consume
+samizdat.run
+  `-- samizdat.control_loop
+       `-- samizdat.turn N
+            |-- samizdat.model
+            |    `-- HTTP POST client
+            `-- execute_tool NAME
 ```
 
-The existing private-pass tap in `jolt-sim/perturb/src/perturb/ir.clj` may be
-used to validate one IR transformation. It is load-order-sensitive and does not
-cover the normal closed-world dependency build, so it is not an acceptable
-published integration. Promotion requires a supported compiler/build hook that
-loads selected manifests before dependency analysis.
+Branch-open, successful branch-close, tool-selection, and steer-evaluation
+events narrate the scheduler without turning instantaneous decisions into
+spans. Database and lower HTTP operations retain the semantic span active when
+the library-owned instrumentation observes them.
+
+`test/samizdat_playwright_e2e.sh` proves the exact submitted coding prompt
+drives the real embedded Samizdat loop, every model request carries a valid
+`traceparent` matching the stored HTTP client span, durable events arrive over
+SSE, the tool edits and verifies the fixture project, and the stored spans have
+the expected parentage. The default run omits model content;
+`test/samizdat_real_run_smoke.sh` proves the explicit bounded-capture mode.
+
+`test/aspect_build_smoke.sh` proves the same provider boundary with a bounded
+non-OTel event journal. In the compiler repository, `make aspectsmoke` covers
+plain, release, dev, optimized, no-direct-link, and no-whole-program modes. Its
+standalone native-error fixture combines an aspect-selected call with
+`{:blocking true :capture-native-error true}` and proves advice cannot change
+the exact `[result native-error]` pair.
+
+`test/aspect_demo_e2e.sh` runs the same live-update, editor, oscope, and
+no-JavaScript browser story first from source and then from a woven native
+binary. Source mode retains five explicit fallback spans tagged
+`demo.instrumentation.mode=source-fallback`. Woven mode has six spans, uses the
+generic DB and HTTP providers, rejects every fallback tag, and verifies that
+the post-span completion hook prevents partial traces after redirects.
+
+## Next contracts and packages
+
+1. Extend the now-tested fixed-arity function-entry selector only when a real
+   anonymous, variadic, or generated-method seam requires a new contract.
+2. Generalize callback completion only when another library cannot express its
+   lifecycle by wrapping already-explicit callback arguments.
+3. Keep the generic client's trace-only injection boundary explicit. The
+   server package now accepts a caller-selected inbound propagator and fails
+   closed to a fresh root for invalid or throwing configurations; retain the
+   woven malformed Trace Context and baggage-privacy matrix as a release gate.
+4. Keep Kindly presentation advisers beside each instrumentation vocabulary,
+   while leaving stored telemetry and generic viewer APIs presentation-free.
 
 ## Acceptance gates
 
 - Base library dependency graphs contain no OTel provider.
 - Plain source builds without an aspect provider and emits no generated spans.
-- Instrumented dev and direct-linked release builds emit the same parent-linked
-  trace.
-- Rebuilding with the same inputs produces the same weave report and cache key.
-- Changing a selected manifest or provider changes the cache identity.
-- A deliberately stale selector fails with a useful zero-match report.
+- Instrumented dev, release, optimized, no-direct-link, and no-whole-program
+  builds preserve application behavior.
+- Rebuilding with the same inputs produces the same weave report and identity.
+- Changing selected manifest or provider material changes the identity.
+- Deliberately stale, overlapping, or incompatible selectors fail before
+  publishing a replacement artifact/report pair.
 - Advice never captures DB parameters, request bodies, credentials, or arbitrary
   headers by default.
-- Playwright observes the generated DB/client/server spans in the trace dialog
-  without a page reload.
+- Playwright observes generated run/turn/model/tool/client spans without a page
+  reload, and the viewer/workbench routes cannot instrument themselves.
 - Library-supplied presentation advice follows Kindly scalar wrapping and
   metadata rules, is bounded by the host, and never enters persisted telemetry.
+
+The DB and HTTP packages, callback-owned server lifecycle, compiler, and
+Samizdat integration no longer depend on a proposed or private compiler hook.

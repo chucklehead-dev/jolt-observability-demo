@@ -10,11 +10,16 @@
             [jolt.http.body :as http-body]
             [jolt.http.server :as http-server]
             [jdbc.core :as jdbc]
+            [otel.context :as context]
             [otel.exporter.chdb.explorer :as explorer]
             [otel.otlp.http-receiver :as otlp-receiver]
             [otel.sdk.export :as export]
             [otel.sdk :as sdk]
             [otel.viewer :as viewer]
+            [oscope.live :as oscope]
+            [oscope.ui.events :as oscope-events]
+            [oscope.ui.workbench :as oscope-workbench]
+            [oscope.ui.web :as oscope-web]
             [teensyp.ffi-net :as net]))
 
 (def sample-summary {:traceCount 1 :spanCount 2 :logCount 1 :errorCount 0})
@@ -83,6 +88,66 @@
             [otlp-receiver/logs-path true]
             [otlp-receiver/metrics-path true]]
            @seen))))
+
+(deftest all-oscope-routes-reach-the-suppressed-embedded-handler
+  (let [seen (atom [])
+        path "/oscope"
+        routes [path
+                (oscope-web/export-path path)
+                (oscope-web/refresh-path path)
+                (oscope-web/live-asset-path path)]
+        app (assoc (test-app)
+                   :oscope-path path
+                   :oscope-handler
+                   (fn [request]
+                     (swap! seen conj
+                            [(:uri request)
+                             (context/instrumentation-suppressed?)])
+                     {:status 209 :headers {} :body "oscope"}))
+        h (demo/handler app)]
+    (doseq [route routes]
+      (is (= route (demo/route-for route path)))
+      (is (true? (demo/server-instrumentation-excluded?
+                  app {:request-method :get :uri route})))
+      (is (= 209 (:status (h {:request-method :get :uri route})))))
+    (is (= (mapv #(vector % true) routes) @seen))))
+
+(deftest extracted-oscope-workbench-routes-are-mounted-and-suppressed
+  (let [seen (atom [])
+        route oscope-workbench/default-path
+        app (assoc (test-app)
+                   :oscope-workbench-handler
+                   (fn [request]
+                     (swap! seen conj
+                            [(:uri request)
+                             (context/instrumentation-suppressed?)])
+                     {:status 210 :headers {} :body "workbench"}))
+        h (demo/handler app)]
+    (is (= route (demo/route-for route)))
+    (is (true? (demo/server-instrumentation-excluded?
+                app {:request-method :get :uri route})))
+    (is (= 210 (:status (h {:request-method :get :uri route}))))
+    (is (= [[route true]] @seen))))
+
+(deftest extracted-oscope-event-routes-are-mounted-and-suppressed
+  (let [seen (atom [])
+        routes [oscope-events/default-path
+                (str oscope-events/default-path "/refresh")
+                (str oscope-events/default-path "/live.js")]
+        app (assoc (test-app)
+                   :oscope-events-handler
+                   (fn [request]
+                     (swap! seen conj
+                            [(:uri request)
+                             (context/instrumentation-suppressed?)])
+                     {:status 211 :headers {} :body "events"}))
+        h (demo/handler app)]
+    (doseq [route routes]
+      (is (= route (demo/route-for route)))
+      (is (true? (demo/server-instrumentation-excluded?
+                  app {:request-method :get :uri route})))
+      (is (= 211 (:status (h {:request-method :get :uri route})))))
+    (is (= (mapv #(vector % true) routes) @seen))))
 
 (deftest agent-demo-routes-select-content-capture-without-http-wrapper-spans
   (let [calls (atom [])
@@ -257,6 +322,11 @@
          "kind" 3
          "startTimeUnixNano" "1785609674782645000"
          "endTimeUnixNano" "1785609674784645000"
+         "events" [{"timeUnixNano" "1785609674783645000"
+                     "name" "exception"
+                     "attributes"
+                     [{"key" "exception.type"
+                       "value" {"stringValue" "example.SafeFailure"}}]}]
          "status" {"code" 1}}]}]}]})
 
 (defn- chunked-request-body [chunks]
@@ -620,6 +690,32 @@
     (is (nil? (http-body/write-body-to-sink (:body response) response sink)))
     (is (= 0 @(:active state)))))
 
+(deftest viewer-queries-and-deferred-sse-rendering-suppress-instrumentation
+  (let [seen (atom [])
+        observe (fn [value]
+                  (swap! seen conj (context/instrumentation-suppressed?))
+                  value)
+        app (assoc (test-app)
+                   :summary-fn #(observe sample-summary)
+                   :filtered-traces-fn (fn [_ _] (observe sample-traces))
+                   :logs-fn #(observe sample-logs))
+        h (demo/handler app)]
+    (is (= 200 (:status (h {:request-method :get :uri "/api/summary"}))))
+    (let [response (h {:request-method :get :uri "/"
+                       :query-string "datastar-sse=true" :headers {}})
+          writer (future
+                   (http-body/write-body-to-sink
+                    (:body response) response
+                    (reify http-body/Sink
+                      (sink-write! [_ _ _ _]
+                        (throw (ex-info "done"
+                                        {:jolt.net/kind :connection-reset})))
+                      (sink-close! [_] nil))))]
+      (is (nil? (deref writer 2000 ::timeout))))
+    (is (seq @seen))
+    (is (every? true? @seen)
+        "synchronous APIs and writer-thread SSE snapshots share suppression")))
+
 (deftest live-sse-crosses-the-real-http-server-before-close
   (let [port (next-live-test-port)
         lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
@@ -652,6 +748,60 @@
         (when-let [fd @client] (net/close! fd))
         (deref reader 2000 nil)
         (demo/stop! lifecycle)))))
+
+(deftest lifecycle-retries-ingress-stop-before-closing-owned-state
+  (let [port (next-live-test-port)
+        lifecycle (demo/start! {:port port :db-spec "chdb::memory:"})
+        real-stop http-server/stop-server
+        attempts (atom 0)]
+    (try
+      (with-redefs [http-server/stop-server
+                    (fn [server]
+                      (if (= 1 (swap! attempts inc))
+                        (throw (ex-info "injected ingress stop timeout" {}))
+                        (real-stop server)))]
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                              #"injected ingress stop timeout"
+                              (demo/stop! lifecycle)))
+        (is (false? @(:closed? (:oscope-source lifecycle)))
+            "an unconfirmed ingress stop leaves oscope callbacks live")
+        (is (= [{:answer 1}]
+               (jdbc/fetch (:connection lifecycle) "select 1 as answer")))
+        (is (= :closed (:status (demo/stop! lifecycle)))
+            "a retry confirms ingress stopped before closing the database")
+        (is (true? @(:closed? (:oscope-source lifecycle))))
+        (is (= 2 @attempts)))
+      (finally (demo/stop! lifecycle)))))
+
+(deftest lifecycle-retires-shared-oscope-before-sdk-and-connection
+  (let [port (next-live-test-port)
+        events (atom [])
+        lifecycle (demo/start!
+                   {:port port :db-spec "chdb::memory:"
+                    :workbench-source-close!
+                    (fn [] (swap! events conj :workbench-source)
+                      {:status :closed})})
+        real-oscope-close oscope/close!
+        real-sdk-shutdown sdk/shutdown!]
+    (try
+      (with-redefs
+        [oscope/close!
+         (fn [source]
+           (swap! events conj :oscope)
+           (real-oscope-close source))
+         sdk/shutdown!
+         (fn [handle]
+           (swap! events conj :sdk)
+           (is (true? @(:closed? (:oscope-source lifecycle))))
+           (is (= [{:answer 1}]
+                  (jdbc/fetch (:connection lifecycle) "select 1 as answer"))
+               "the shared connection remains open while oscope retires")
+           (real-sdk-shutdown handle))]
+        (is (= :closed (:status (demo/stop! lifecycle)))))
+      (is (= [:workbench-source :oscope :sdk] @events))
+      (is (thrown? Throwable
+                   (jdbc/fetch (:connection lifecycle) "select 1 as answer")))
+      (finally (demo/stop! lifecycle)))))
 
 (deftest live-loopback-integration
   (let [port (+ 24000 (rand-int 3000))
@@ -693,31 +843,32 @@
               detail (decode (http-client/get (str base "/api/traces/" trace-id)
                                               {:conn-timeout 2000 :socket-timeout 5000}))
               spans (:spans detail)
-              server (some #(when (= "HTTP GET /work" (:name %)) %) spans)
-              database (some #(when (= "SELECT demo readiness" (:name %)) %) spans)
+              server (some #(when (= "GET /work" (:name %)) %) spans)
               producer (some #(when (= "demo.jobs publish" (:name %)) %) spans)
               consumer (some #(when (= "demo.jobs process" (:name %)) %) spans)
-              client (some #(when (and (= "HTTP GET /upstream" (:name %))
+              client (some #(when (and (= "GET" (:name %))
                                        (= "client" (:kind %))) %) spans)
-              upstream (some #(when (and (= "HTTP GET /upstream" (:name %))
+              upstream (some #(when (and (= "GET /upstream" (:name %))
                                          (= "server" (:kind %))) %) spans)]
-          (is (= "HTTP GET /work" (:rootSpan summary)))
-          (is (= 6 (count spans))
-              "one trace contains DB, queue propagation, and both HTTP edges")
+          (is (= "GET /work" (:rootSpan summary)))
+          (is (= 5 (count spans))
+              "plain source fallback retains queue propagation and both HTTP edges")
           (is (= remote-span-id (:parentSpanId server)))
-          (is (= (:spanId server) (:parentSpanId database)))
           (is (= (:spanId server) (:parentSpanId producer)))
           (is (= (:spanId producer) (:parentSpanId consumer)))
           (is (= (:spanId server) (:parentSpanId client)))
           (is (= (:spanId client) (:parentSpanId upstream)))
+          (doseq [span [server client upstream]]
+            (is (= "source-fallback"
+                   (get-in span [:attributes :demo.instrumentation.mode]))))
           (is (some #(and (= (:traceId detail) (:traceId %))
                           (not= "" (:spanId %))) (:logs detail))
               "the trace detail API returns a correlated log")
           (let [page (http-client/get (str base "/traces/" trace-id))]
             (is (= 200 (:status page)))
             (is (str/includes? (:body page) "<details open>"))
-            (is (str/includes? (:body page) "HTTP GET /upstream"))
-            (is (str/includes? (:body page) "SELECT demo readiness"))
+            (is (str/includes? (:body page) "GET /upstream"))
+            (is (not (str/includes? (:body page) "SELECT demo readiness")))
             (is (str/includes? (:body page) "demo.jobs process"))
             (is (not (str/includes? (:body page) "<script"))))
           (let [before-post (:traceCount (decode (http-client/get (str base "/api/summary"))))
@@ -906,7 +1057,7 @@
           (is (not (str/includes? html-omitted "bounded sanitized answer")))
           (is (str/includes? html-intervention ">Intervention</span>"))
           (is (str/includes? html-intervention
-                             "answer lacked a concrete telemetry mechanism"))
+                             "first draft required a concrete correctness review"))
           (is (str/includes? html-intervention "Controller intervention:"))
           (is (str/includes? html-intervention "revised controlled answer"))))
       (finally (demo/stop! lifecycle)))))
@@ -930,6 +1081,32 @@
     (is (= :kind/code (:kindly/kind (meta prompt))))
     (is (= true (get-in (meta prompt) [:kindly/options :wrapped-value])))
     (is (= ["bounded prompt"] prompt))))
+
+(deftest samizdat-tool-advice-renders-bounded-details-as-kindly-values
+  (let [advised
+        (samizdat-kindly/advise-trace
+         {:spanTree
+          [{:name "samizdat.tool"
+            :attributes
+            {"gen_ai.operation.name" "execute_tool"
+             "gen_ai.tool.name" "read_file"
+             "samizdat.turn.number" 2
+             "samizdat.tool.category" "evidence"
+             "samizdat.tool.progress" true
+             "samizdat.tool.timeout" false
+             "samizdat.tool.arguments_state" "captured"
+             "samizdat.tool.result_state" "captured"
+             "samizdat.tool.arguments_sanitized" "{:path \"src/calc.clj\"}"
+             "samizdat.tool.result_sanitized" "(defn square [x] (* x x))"}}]})
+        note (get-in advised [:spanTree 0 :kindly :value])
+        html (viewer/render-fragment {:trace advised})]
+    (is (= :kind/fragment (:kindly/kind (meta note))))
+    (is (= "Tool" (get-in (meta note) [:kindly/options :otel.viewer/role])))
+    (is (str/includes? html "read_file"))
+    (is (str/includes? html "Captured arguments"))
+    (is (str/includes? html "src/calc.clj"))
+    (is (str/includes? html "Captured result"))
+    (is (str/includes? html "defn square"))))
 
 (deftest live-otlp-parent-child-ingestion-without-feedback
   (let [port (+ 27050 (rand-int 900))
@@ -987,6 +1164,7 @@
                               (str base "/api/traces/" otlp-trace-id)))
               tree (:spanTree detail)
               root (first tree)
+              child (first (:children root))
               page (http-client/get (str base "/traces/" otlp-trace-id))]
           (is (= {:traceCount 1 :spanCount 2 :logCount 0 :errorCount 0}
                  summary)
@@ -995,6 +1173,8 @@
           (is (= 2 (:spanCount trace-summary)))
           (is (= otlp-root-span-id (:spanId root)))
           (is (= [otlp-child-span-id] (mapv :spanId (:children root))))
+          (is (= "exception" (get-in child [:events 0 :name]))
+              "trace detail retains bounded span events for diagnostics")
           (is (= 200 (:status page)))
           (is (str/includes? (:body page) "ingest-root"))
           (is (str/includes? (:body page) "ingest-child"))))

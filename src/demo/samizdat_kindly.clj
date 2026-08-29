@@ -13,6 +13,13 @@
    "samizdat.prompt.sanitized" "samizdat.response.sanitized"
    "samizdat.prompt.content_state" "samizdat.response.content_state"])
 
+(def ^:private hidden-tool-attributes
+  ["gen_ai.operation.name" "gen_ai.tool.name"
+   "samizdat.run.id" "samizdat.branch.id" "samizdat.turn.number"
+   "samizdat.tool.category" "samizdat.tool.progress" "samizdat.tool.timeout"
+   "samizdat.tool.arguments_state" "samizdat.tool.result_state"
+   "samizdat.tool.arguments_sanitized" "samizdat.tool.result_sanitized"])
+
 (defn- kind-value [value kind options]
   ;; Mirrors scicloj.kindly.v4.api/attach-meta-to-value, including the scalar
   ;; wrapping contract, without making Kindly a runtime dependency.
@@ -88,6 +95,38 @@
           (into [(table row)] content-items)
           hidden-content-attributes)))
 
+(defn- captured-state? [attributes name]
+  (= "captured" (some-> (attribute attributes name) str str/lower-case)))
+
+(defn- tool-note [attributes]
+  (let [row (cond-> (array-map)
+              (attribute attributes "gen_ai.tool.name")
+              (assoc :Tool (attribute attributes "gen_ai.tool.name"))
+              (attribute attributes "samizdat.tool.category")
+              (assoc :Category (attribute attributes "samizdat.tool.category"))
+              (attribute attributes "samizdat.turn.number")
+              (assoc :Turn (attribute attributes "samizdat.turn.number"))
+              (some? (attribute attributes "samizdat.tool.progress"))
+              (assoc :Progress (attribute attributes "samizdat.tool.progress"))
+              (some? (attribute attributes "samizdat.tool.timeout"))
+              (assoc :Timed-out (attribute attributes "samizdat.tool.timeout")))
+        content (cond-> []
+                  (captured-state? attributes "samizdat.tool.arguments_state")
+                  (conj (code "Captured arguments"
+                              (attribute attributes
+                                         "samizdat.tool.arguments_sanitized")))
+                  (captured-state? attributes "samizdat.tool.result_state")
+                  (conj (code "Captured result"
+                              (attribute attributes
+                                         "samizdat.tool.result_sanitized"))))
+        content (if (seq (remove nil? content))
+                  content
+                  [(kind-value "Arguments and result not recorded (privacy default)"
+                               :kind/println nil)])]
+    (note "Tool" :tool false "Tool call"
+          (into [(table row)] content)
+          hidden-tool-attributes)))
+
 (defn- intervention-note [attributes]
   (note "Intervention" :warning true "Controller intervention"
         [(table
@@ -111,7 +150,7 @@
         (cond
           (or (= operation "execute_tool")
               (attribute attributes "samizdat.tool.name"))
-          (role-note "Tool" :tool)
+          (tool-note attributes)
 
           (contains? #{"chat" "text_completion" "generate_content"} operation)
           (generation-note attributes)

@@ -6,11 +6,14 @@
   },
   "scripts": {
     "test:browser": "playwright test --project=chromium",
+    "test:browser:samizdat": "test/samizdat_playwright_e2e.sh",
+    "test:browser:aspect": "test/aspect_demo_e2e.sh",
     "test:browser:persistent": "scripts/test-browser-persistent.sh",
     "test:browser:restart": "playwright test --config=playwright.restart.config.js",
     "docs:screenshots": "playwright test --project=docs",
     "docs:agent-screenshots": "playwright test --project=agent-docs",
-    "docs:agent-gif": "scripts/render-agent-gif.sh"
+    "docs:agent-gif": "scripts/render-agent-gif.sh",
+    "docs:samizdat-gif": "scripts/render-samizdat-gif.sh"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1"

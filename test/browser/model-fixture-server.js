@@ -2,13 +2,15 @@ const http = require("node:http");
 
 const port = Number(process.env.DEMO_MODEL_FIXTURE_PORT || 31809);
 const finding =
-  "The dashboard is not stale; it is merely waiting for the server to finish " +
-  "calculating the square root of -1, a process that will conclude in " +
-  "approximately four billion years.";
+  "Reset the stream cursor to zero whenever the browser reconnects, then " +
+  "poll after each wakeup; add a reconnect smoke test that checks the newest " +
+  "trace appears.";
 const revisedFinding =
-  "The live patch missed its wake transition and left the viewer on an old " +
-  "cursor; the controller has reassigned the square root of -1 to the thread " +
-  "that thought waiting counted as progress.";
+  "Resume from Last-Event-ID, register the waiter before re-reading the " +
+  "durable maximum sequence, emit only records newer than the cursor, and " +
+  "advance it only after a successful write. Add a deterministic test that " +
+  "inserts a notification between the first read and waiter registration, " +
+  "then reconnects and asserts no gaps or duplicates.";
 
 const server = http.createServer((request, response) => {
   if (request.method === "GET" && request.url === "/health") {

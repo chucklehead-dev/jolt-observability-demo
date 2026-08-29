@@ -80,8 +80,8 @@ test("a browser-created trace survives a complete chDB process restart", async (
     await firstPage.getByRole("button", {name: "Generate work"}).click();
     await expect(traces).toHaveCount(before + 1);
     const durableTrace = traces.first();
-    await expect(durableTrace).toContainText("HTTP POST /work");
-    await expect(durableTrace).toContainText("6 spans");
+    await expect(durableTrace).toContainText("POST /work");
+    await expect(durableTrace).toContainText("5 spans");
     const tracePath = await durableTrace.getByRole("link").getAttribute("href");
     expect(tracePath).toMatch(/^\/traces\/[0-9a-f]{32}$/);
     await firstContext.close();
@@ -98,8 +98,8 @@ test("a browser-created trace survives a complete chDB process restart", async (
     await secondPage.locator(`a[href="${tracePath}"]`).click();
     const dialog = secondPage.locator("dialog[data-otel-dialog]");
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator(".otel-spans > li")).toHaveCount(6);
-    await expect(dialog).toContainText("SELECT demo readiness");
+    await expect(dialog.locator(".otel-spans > li")).toHaveCount(5);
+    await expect(dialog).not.toContainText("SELECT demo readiness");
     await expect(dialog).toContainText("demo.jobs process");
     await secondContext.close();
   } finally {

@@ -1,9 +1,11 @@
 (ns demo.property-test
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
+            [demo.aspect-journal :as journal]
             [demo.main :as demo]
             [hegel.core :as h]
             [hegel.generator :as g]
+            [hegel.trace :as htrace]
             [jdbc.core :as jdbc]
             [otel.viewer :as viewer]))
 
@@ -228,10 +230,72 @@
                  "filter parameters disagreed with the bounded model"
                  {:selected selected :expected expected :actual params}))))))
 
+(defn- nested-observation! [lifecycles]
+  (let [{:keys [role throw?]} (first lifecycles)
+        depth (count lifecycles)
+        join-point {:id (keyword "demo.trace" (str "level-" depth))
+                    :advice-role role
+                    :library {:id 'demo/aspect-fixture :version "v1"}}]
+    (journal/around
+     join-point
+     (fn []
+       (if-let [children (next lifecycles)]
+         (nested-observation! children)
+         (if throw?
+           (throw (ex-info "generated private failure" {:private true}))
+           :done))))))
+
+(defn- aspect-lifecycles-generator []
+  (g/recursive
+   {:max-depth 19 :max-leaves 1}
+   (g/fmap (fn [throw?]
+             [{:role :agent/model :throw? throw?}])
+           (g/boolean))
+   (fn [child]
+     (g/fmap #(into [{:role :agent/run :throw? false}] %)
+             child))))
+
+(defn- aspect-trace-property []
+  (h/run-test!
+   {:name "demo aspect journal semantic trace"
+    :database "" :verbosity :quiet
+    :derandomize? true :test-cases 100}
+   (fn [_]
+     (let [lifecycles (h/draw! (aspect-lifecycles-generator))
+           depth (count lifecycles)
+           throw-at-leaf? (:throw? (last lifecycles))
+           observations (journal/journal 64)
+           outcome (try
+                     (binding [journal/*journal* observations]
+                       (nested-observation! lifecycles))
+                     (catch :default error error))
+           events (journal/snapshot observations)]
+       ;; Assertions are deliberately outside advice: the compiler's advice
+       ;; contract fails open and must never swallow a property verdict.
+       (htrace/check!
+        events
+        [(htrace/contiguous-sequence :demo-journal-not-truncated)
+         (htrace/closed-lifecycles :demo-aspect-lifecycles-close)
+         (htrace/synchronous-parentage :demo-aspect-parentage)
+         (htrace/every-eventually
+          :demo-model-operation-terminates
+          #(and (= :agent/model (:role %)) (= :enter (:phase %)))
+          #(contains? #{:return :throw} (:phase %)))]
+        {:max-events 64})
+       (check! (= (* 2 depth) (count events))
+               "demo/aspect-event-cardinality"
+               "aspect journal lost or duplicated lifecycle events"
+               {:depth depth :event-count (count events)})
+       (check! (= throw-at-leaf? (instance? Throwable outcome))
+               "demo/aspect-exception-outcome"
+               "aspect journal changed the application outcome"
+               {:depth depth :throw-at-leaf? throw-at-leaf?})))))
+
 (defn run-properties! []
   [{:label "trace-id boundary" :result (trace-id-boundary-property)}
    {:label "route/method matrix" :result (route-method-property)}
    {:label "viewer escaping" :result (escaped-viewer-property)}
    {:label "bounded JSON" :result (bounded-json-property)}
    {:label "bounded parameterized queries" :result (bounded-query-property)}
-   {:label "trace filter boundary" :result (trace-filter-boundary-property)}])
+   {:label "trace filter boundary" :result (trace-filter-boundary-property)}
+   {:label "aspect semantic trace" :result (aspect-trace-property)}])

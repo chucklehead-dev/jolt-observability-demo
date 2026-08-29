@@ -2,22 +2,34 @@
 
  :deps {io.github.casselc/jolt-http
         {:git/url "https://github.com/casselc/jolt-http.git"
-         :git/sha "0629087f4d7e42343164e43906fae6d707787ed0"}
+         :git/sha "c6effc3a04be1467e66da433b879a8a73a352228"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
-         :git/sha "eba91d0536fee73ee192f68676915e48be23b348"}
+         :git/sha "a00979f5e55bc8deb98291993643ff1ccf50a57b"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "70187410f8877307606a98c4bd105c41075acb0e"}
+         :git/sha "cad9d8e951e22819f71236a9b7509a6288fa200b"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
-         :git/sha "d7f1c2b684f185459d313c934835c16282e8e42c"}
+         :git/sha "6321a0a23a06e396c684d303f3cb4d31bebc8d9f"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
-         :git/sha "6b36b96f0d0301dbeb09b6ce10629fb4059b2d25"}
+         :git/sha "8971ce58241ed236653fe7c84209579ae70027ac"}
+        io.github.chucklehead-dev/jolt-otel-instrumentation-db
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
+         :git/sha "b1dbfb4621a57efa8bce0b7de3f9cd0db52a4c64"}
+        io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
+         :git/sha "40679054dc4786e43577cb9788f69db0f9a2a401"}
+        io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
+         :git/sha "6d7837c14dbf9710e833933ef61e6314d12b54ad"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
-         :git/sha "2e01db360da3ac2f6478982852b4679604cf62ec"}
+         :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
+        io.github.chucklehead-dev/oscope
+        {:git/url "https://github.com/chucklehead-dev/oscope.git"
+         :git/sha "df561a8339bfdfee219b503c486ad60f90c07c0d"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}
@@ -28,15 +40,34 @@
         {:git/url "https://github.com/casselc/data.json.git"
          :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}}
 
- :jolt/build {:embed ["resources"]}
+ :jolt/build {:embed ["resources"]
+              :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
+                         :provider demo.aspect-provider}
+                        {:resource "META-INF/jolt/aspects/db-jdbc-shim.edn"
+                         :provider otel.instrumentation.db}
+                        {:resource "META-INF/jolt/aspects/http-client-core.edn"
+                         :provider otel.instrumentation.http-client}
+                        {:resource "META-INF/jolt/aspects/http-server.edn"
+                         :provider otel.instrumentation.http-server}]
+              :aspect-report "target/aspects.edn"}
 
  :aliases {:setup-native {:main-opts ["-m" "jdbc.chdb.install"]}
            :test {:extra-paths ["test"]
                   :extra-deps
-                  {io.github.chucklehead-dev/jolt-hegel
+                  {io.github.casselc/samizdat
+                   {:git/url "https://github.com/casselc/samizdat.git"
+                    :git/sha "7a72c9b52e35f4dd31daefcef2a9b3235a80e475"}
+                   io.github.chucklehead-dev/jolt-hegel
                    {:git/url "https://github.com/chucklehead-dev/jolt-hegel.git"
-                    :git/sha "53631c81cd927175935037699ddf687d98a44d24"}}
+                    :git/sha "3bc46499e0cfb5cf8fe67c30e997fbcae135ab47"}}
                   :main-opts ["-m" "demo.test-runner"]}
+           :plotje-oracle-test
+           {:extra-paths ["test"]
+            :replace-deps
+            {io.github.scicloj/plotje
+             {:git/url "https://github.com/scicloj/plotje.git"
+              :git/sha "b2a9199681c4143ec1068ed02feec4e2997d50ca"}}
+            :main-opts ["-m" "demo.plotje-oracle-test-runner"]}
            :threadstatus-probe
            {:extra-paths ["test"]
             :main-opts ["-m" "demo.threadstatus-probe"]}}

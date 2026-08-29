@@ -1,10 +1,24 @@
 (ns demo.test-runner
   (:require [clojure.test :as test]
+            [demo.aspect-journal-test]
             [demo.main-test]
-            [demo.property-test :as property]))
+            [demo.oscope-web-test]
+            [demo.plotje-portable-test]
+            [demo.property-test :as property]
+            [demo.samizdat-adapter-test]
+            [demo.samizdat-aspect-provider-test]
+            [demo.samizdat-journal-provider-test]
+            [demo.workbench-test]))
 
 (defn -main [& _]
-  (let [result (test/run-tests 'demo.main-test)
+  (let [result (test/run-tests 'demo.main-test
+                               'demo.oscope-web-test
+                               'demo.aspect-journal-test
+                               'demo.plotje-portable-test
+                               'demo.samizdat-adapter-test
+                               'demo.samizdat-aspect-provider-test
+                               'demo.samizdat-journal-provider-test
+                               'demo.workbench-test)
         properties (property/run-properties!)
         _ (doseq [{:keys [label result]} properties]
             (println "Hegel" label "seed" (:seed result)
