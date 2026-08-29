@@ -192,7 +192,8 @@ names. The journal is display-only and is never consulted by the run state
 machine.
 
 The test alias also treats that journal as a semantic test trace. Hegel
-generates nested success and failure lifecycles, while `hegel.trace` checks
+uses libhegel's recursive generator and shrink tree to generate nested success
+and failure lifecycles, while `hegel.trace` checks
 contiguous retention, balanced terminal events, synchronous parentage, and
 eventual model completion outside the fail-open advice boundary. If one of
 those contracts regresses, Hegel shrinks the depth/outcome inputs and retains

@@ -230,18 +230,30 @@
                  "filter parameters disagreed with the bounded model"
                  {:selected selected :expected expected :actual params}))))))
 
-(defn- nested-observation! [depth throw-at-leaf?]
-  (let [join-point {:id (keyword "demo.trace" (str "level-" depth))
-                    :advice-role (if (= depth 1) :agent/model :agent/run)
+(defn- nested-observation! [lifecycles]
+  (let [{:keys [role throw?]} (first lifecycles)
+        depth (count lifecycles)
+        join-point {:id (keyword "demo.trace" (str "level-" depth))
+                    :advice-role role
                     :library {:id 'demo/aspect-fixture :version "v1"}}]
     (journal/around
      join-point
      (fn []
-       (if (= depth 1)
-         (if throw-at-leaf?
+       (if-let [children (next lifecycles)]
+         (nested-observation! children)
+         (if throw?
            (throw (ex-info "generated private failure" {:private true}))
-           :done)
-         (nested-observation! (dec depth) throw-at-leaf?))))))
+           :done))))))
+
+(defn- aspect-lifecycles-generator []
+  (g/recursive
+   {:max-depth 19 :max-leaves 1}
+   (g/fmap (fn [throw?]
+             [{:role :agent/model :throw? throw?}])
+           (g/boolean))
+   (fn [child]
+     (g/fmap #(into [{:role :agent/run :throw? false}] %)
+             child))))
 
 (defn- aspect-trace-property []
   (h/run-test!
@@ -249,12 +261,13 @@
     :database "" :verbosity :quiet
     :derandomize? true :test-cases 100}
    (fn [_]
-     (let [depth (h/draw! (g/integer 1 20))
-           throw-at-leaf? (h/draw! (g/boolean))
+     (let [lifecycles (h/draw! (aspect-lifecycles-generator))
+           depth (count lifecycles)
+           throw-at-leaf? (:throw? (last lifecycles))
            observations (journal/journal 64)
            outcome (try
                      (binding [journal/*journal* observations]
-                       (nested-observation! depth throw-at-leaf?))
+                       (nested-observation! lifecycles))
                      (catch :default error error))
            events (journal/snapshot observations)]
        ;; Assertions are deliberately outside advice: the compiler's advice
