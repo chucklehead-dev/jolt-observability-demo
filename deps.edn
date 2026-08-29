@@ -2,19 +2,19 @@
 
  :deps {io.github.casselc/jolt-http
         {:git/url "https://github.com/casselc/jolt-http.git"
-         :git/sha "1ed2fd9253e20494170803aa110ba89402d92faf"}
+         :git/sha "c6effc3a04be1467e66da433b879a8a73a352228"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
          :git/sha "a00979f5e55bc8deb98291993643ff1ccf50a57b"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "efb3d58eae41a0d52f220552051770fb6219d5f4"}
+         :git/sha "cad9d8e951e22819f71236a9b7509a6288fa200b"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
          :git/sha "6321a0a23a06e396c684d303f3cb4d31bebc8d9f"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
-         :git/sha "8ae3c1f8da0e1029a19ae78d4241788f19825cab"}
+         :git/sha "8971ce58241ed236653fe7c84209579ae70027ac"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
          :git/sha "b1dbfb4621a57efa8bce0b7de3f9cd0db52a4c64"}
@@ -23,13 +23,13 @@
          :git/sha "40679054dc4786e43577cb9788f69db0f9a2a401"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
-         :git/sha "3e1cacccf474b7670301abfa408da1c330df36ec"}
+         :git/sha "6d7837c14dbf9710e833933ef61e6314d12b54ad"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
         io.github.chucklehead-dev/oscope
         {:git/url "https://github.com/chucklehead-dev/oscope.git"
-         :git/sha "16bbfe94102107f6dca3a160fb179a1ebb5fc172"}
+         :git/sha "df561a8339bfdfee219b503c486ad60f90c07c0d"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}
