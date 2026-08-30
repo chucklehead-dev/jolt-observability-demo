@@ -20,11 +20,20 @@ case "$output" in
 esac
 
 cd "$repo"
-JOLT_WRAPPER="$toolchain" \
+if [ -n "$toolchain" ]; then
+  source_server_command="$toolchain $jolt -m demo.main"
+else
+  source_server_command="$jolt -m demo.main"
+fi
+DEMO_SERVER_COMMAND="$source_server_command" \
   DEMO_EXPECT_WOVEN_DB=0 \
   npx playwright test --project=chromium
 
 run_jolt build -m demo.main -o "$output_path"
+(cd "$repo/target"
+ run_jolt -Srepro -Sdeps "{:paths [\"$repo/test\"]}" \
+   -m demo.effect-evidence \
+   "$output_path.build/effects.edn" woven "$repo/target/aspects.edn")
 DEMO_SERVER_COMMAND="$output_path" \
   DEMO_EXPECT_WOVEN_DB=1 \
   npx playwright test --project=chromium

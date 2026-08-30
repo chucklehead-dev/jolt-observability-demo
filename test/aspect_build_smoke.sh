@@ -22,6 +22,11 @@ run_jolt -Sdeps \
                 :provider demo.aspect-provider}]
      :aspect-report "target/aspect-smoke-aspects.edn"}}' \
   build -m demo.aspect-smoke -o target/aspect-smoke
+(cd "$repo/target"
+ run_jolt -Srepro -Sdeps "{:paths [\"$repo/test\"]}" \
+   -m demo.effect-evidence \
+   "$repo/target/aspect-smoke.build/effects.edn" woven \
+   "$repo/target/aspect-smoke-aspects.edn")
 output=$(target/aspect-smoke)
 
 printf '%s\n' "$output" | grep -q ':event-count 2'

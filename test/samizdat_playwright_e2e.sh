@@ -3,6 +3,8 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 binary=${SAMIZDAT_DEMO_BIN:-$repo/target/samizdat-observability-demo}
+jolt=${JOLT_ASPECT_BIN:?set JOLT_ASPECT_BIN to the compiler used to build the Samizdat demo}
+toolchain=${JOLT_TOOLCHAIN:-}
 playwright_config=${SAMIZDAT_PLAYWRIGHT_CONFIG:-$repo/playwright.samizdat.config.js}
 model_port=${DEMO_MODEL_FIXTURE_PORT:-31849}
 demo_port=${DEMO_E2E_PORT:-31029}
@@ -20,7 +22,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+run_jolt() {
+  if [ -n "$toolchain" ]; then
+    "$toolchain" "$jolt" "$@"
+  else
+    "$jolt" "$@"
+  fi
+}
+
 test -x "$binary"
+(cd "$repo/target"
+ run_jolt -Srepro -Sdeps "{:paths [\"$repo/test\"]}" \
+   -m demo.effect-evidence \
+   "$binary.build/effects.edn" woven "$repo/target/samizdat-aspects.edn")
 test -s "$repo/target/samizdat-aspects.edn"
 grep -q ':http-client.core/request' "$repo/target/samizdat-aspects.edn"
 grep -q ':http/server-ring-handler' "$repo/target/samizdat-aspects.edn"

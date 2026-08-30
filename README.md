@@ -139,9 +139,17 @@ valid `traceparent` whose trace/span identity matches the stored HTTP client
 span:
 
 ```sh
+JOLT_TOOLCHAIN=/absolute/path/to/jolt-with-chez-10.4.1 \
+JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
 JOLT_CHDB_LIB=/absolute/path/to/libchdb.so \
   test/samizdat_playwright_e2e.sh
 ```
+
+The compiled-binary gates first validate
+`target/samizdat-observability-demo.build/effects.edn` against
+`target/samizdat-aspects.edn`. All plain, woven, and optimized compiler phases
+must have the same nonempty callable set; compiler verification must be clean;
+and the woven aspect-site identities must survive optimization exactly.
 
 `test/samizdat_real_run_smoke.sh` provides the corresponding browser-free
 compiled-binary smoke.
@@ -260,6 +268,10 @@ That gate proves the plain source story has five spans, the woven story has six,
 the generated `SELECT` span is a direct child of the request span, generic HTTP
 spans contain no fallback provenance, and exporter, schema, explorer, API,
 viewer, and deferred SSE work cannot feed back through auto-instrumentation.
+Before the woven executable runs, the gate also validates its independent
+`target/observability-demo-aspect.build/effects.edn` report against
+`target/aspects.edn`; a missing, vacuous, mismatched, or optimizer-damaged
+report fails the gate.
 The server provider ends its span at accepted Ring callback completion and then
 flushes it before redirect-driven viewer queries, preventing partial trace
 roots in both JavaScript and no-JavaScript flows.

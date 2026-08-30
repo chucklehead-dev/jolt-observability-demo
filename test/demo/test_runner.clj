@@ -1,6 +1,7 @@
 (ns demo.test-runner
   (:require [clojure.test :as test]
             [demo.aspect-journal-test]
+            [demo.effect-evidence-test]
             [demo.main-test]
             [demo.oscope-web-test]
             [demo.plotje-portable-test]
@@ -14,6 +15,7 @@
   (let [result (test/run-tests 'demo.main-test
                                'demo.oscope-web-test
                                'demo.aspect-journal-test
+                               'demo.effect-evidence-test
                                'demo.plotje-portable-test
                                'demo.samizdat-adapter-test
                                'demo.samizdat-aspect-provider-test
