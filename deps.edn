@@ -8,7 +8,7 @@
          :git/sha "a00979f5e55bc8deb98291993643ff1ccf50a57b"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "cad9d8e951e22819f71236a9b7509a6288fa200b"}
+         :git/sha "95b13bc5939cbd117e504f02bb32623ddc69068b"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
          :git/sha "6321a0a23a06e396c684d303f3cb4d31bebc8d9f"}
@@ -17,13 +17,13 @@
          :git/sha "8971ce58241ed236653fe7c84209579ae70027ac"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
-         :git/sha "b1dbfb4621a57efa8bce0b7de3f9cd0db52a4c64"}
+         :git/sha "0b6a5b850bb959563cff602ec684bb48dcc2f541"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
          :git/sha "40679054dc4786e43577cb9788f69db0f9a2a401"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
-         :git/sha "6d7837c14dbf9710e833933ef61e6314d12b54ad"}
+         :git/sha "39db6833eae399bf03db9a6c7e14c69f81f4a4f3"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
@@ -47,8 +47,8 @@
                          :provider otel.instrumentation.db}
                         {:resource "META-INF/jolt/aspects/http-client-core.edn"
                          :provider otel.instrumentation.http-client}
-                        {:resource "META-INF/jolt/aspects/http-server.edn"
-                         :provider otel.instrumentation.http-server}]
+                        {:preset
+                         "META-INF/jolt/instrumentation/http-server/basic.edn"}]
               :aspect-report "target/aspects.edn"}
 
  :aliases {:setup-native {:main-opts ["-m" "jdbc.chdb.install"]}
