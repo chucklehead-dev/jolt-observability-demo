@@ -3,6 +3,8 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 binary=${SAMIZDAT_DEMO_BIN:-$repo/target/samizdat-observability-demo}
+jolt=${JOLT_ASPECT_BIN:?set JOLT_ASPECT_BIN to the compiler used to build the Samizdat demo}
+toolchain=${JOLT_TOOLCHAIN:-}
 model_port=${DEMO_MODEL_FIXTURE_PORT:-31819}
 demo_port=${DEMO_E2E_PORT:-30999}
 scratch=$(mktemp -d /tmp/jolt-samizdat-demo-smoke.XXXXXX)
@@ -18,7 +20,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+run_jolt() {
+  if [ -n "$toolchain" ]; then
+    "$toolchain" "$jolt" "$@"
+  else
+    "$jolt" "$@"
+  fi
+}
+
 test -x "$binary"
+(cd "$repo/target"
+ run_jolt -Srepro -Sdeps "{:paths [\"$repo/test\"]}" \
+   -m demo.effect-evidence \
+   "$binary.build/effects.edn" woven "$repo/target/samizdat-aspects.edn")
 mkdir -p "$scratch/project"
 
 DEMO_MODEL_FIXTURE_PORT=$model_port \

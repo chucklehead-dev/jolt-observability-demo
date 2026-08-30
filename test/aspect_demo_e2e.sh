@@ -35,6 +35,10 @@ JOLT_BIN="$jolt" \
   npx playwright test --project=chromium
 
 run_jolt build -m demo.main -o "$output_path"
+(cd "$repo/target"
+ run_jolt -Srepro -Sdeps "{:paths [\"$repo/test\"]}" \
+   -m demo.effect-evidence \
+   "$output_path.build/effects.edn" woven "$repo/target/aspects.edn")
 DEMO_SERVER_COMMAND="$output_path" \
   DEMO_EXPECT_WOVEN_DB=1 \
   npx playwright test --project=chromium
