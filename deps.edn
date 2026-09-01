@@ -43,7 +43,7 @@
          :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}
         io.github.chucklehead-dev/time
         {:git/url "https://github.com/chucklehead-dev/time.git"
-         :git/sha "a374461cfc7b535fab1f3ae89a235964a09c8514"}}
+         :git/sha "2494b21b25cd959573c3e6050cd475e4bf302fdb"}}
 
  :jolt/build {:embed ["resources"]
               :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
