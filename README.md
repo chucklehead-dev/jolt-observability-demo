@@ -325,7 +325,8 @@ implemented provider-neutral aspect/weaver contract and remaining propagation
 and lifecycle fast follows. The resolved Samizdat run,
 control-loop, model, tool, memory, HTTP, and DB seams are recorded in
 [docs/samizdat-instrumentation.md](docs/samizdat-instrumentation.md).
-The cross-repository release order and exact remaining SHA replacements are in
+The current main-branch publication snapshot, fork-only dependencies, and
+remaining upstream decisions are in
 [docs/publication-checklist.md](docs/publication-checklist.md); it opens no
 upstream pull request.
 
