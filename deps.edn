@@ -1,29 +1,31 @@
 {:paths ["src" "resources"]
 
+ :jolt/min-version "0.8.0"
+
  :deps {io.github.casselc/jolt-http
         {:git/url "https://github.com/casselc/jolt-http.git"
-         :git/sha "c6effc3a04be1467e66da433b879a8a73a352228"}
+         :git/sha "d9fa89309fb9faa3dd3e8319a79d57fc03925341"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
-         :git/sha "a00979f5e55bc8deb98291993643ff1ccf50a57b"}
+         :git/sha "7cf4b2d56f8d10fef83594a543146f886e8180ad"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "cad9d8e951e22819f71236a9b7509a6288fa200b"}
+         :git/sha "ebcb0d1b36532155452d7a75842e232f7feeb548"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
-         :git/sha "6321a0a23a06e396c684d303f3cb4d31bebc8d9f"}
+         :git/sha "824115821a53e4d7da544b31dbe920fef292493f"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
-         :git/sha "8971ce58241ed236653fe7c84209579ae70027ac"}
+         :git/sha "9a13e3bbe63205a608875bbcd204175c6f1f242a"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
-         :git/sha "b1dbfb4621a57efa8bce0b7de3f9cd0db52a4c64"}
+         :git/sha "c9fdbbfefdaba3cc88563c91d3eeae2c8bf26699"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
-         :git/sha "40679054dc4786e43577cb9788f69db0f9a2a401"}
+         :git/sha "8badefe2d035b0533dc068c58460fc39e0851764"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
-         :git/sha "6d7837c14dbf9710e833933ef61e6314d12b54ad"}
+         :git/sha "b83514cf6babf70257538e2c75f0e3ab8ecd9f8a"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
@@ -38,7 +40,10 @@
          :git/sha "6dab5597dc0d912793fe175d0d3cbb9e75f11426"}
         io.github.casselc/data.json
         {:git/url "https://github.com/casselc/data.json.git"
-         :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}}
+         :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}
+        io.github.chucklehead-dev/time
+        {:git/url "https://github.com/chucklehead-dev/time.git"
+         :git/sha "a374461cfc7b535fab1f3ae89a235964a09c8514"}}
 
  :jolt/build {:embed ["resources"]
               :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
@@ -59,7 +64,7 @@
                     :git/sha "7a72c9b52e35f4dd31daefcef2a9b3235a80e475"}
                    io.github.chucklehead-dev/jolt-hegel
                    {:git/url "https://github.com/chucklehead-dev/jolt-hegel.git"
-                    :git/sha "3bc46499e0cfb5cf8fe67c30e997fbcae135ab47"}}
+                    :git/sha "b214f769983211431c74e427f0f35553cfba7b34"}}
                   :main-opts ["-m" "demo.test-runner"]}
            :plotje-oracle-test
            {:extra-paths ["test"]

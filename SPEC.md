@@ -124,7 +124,7 @@ program using `jolt-http`'s Ring-shaped handler, `jolt-lang/http-client`,
   matching the transcript.
   `THREADSTATUS_PROBE_SCENARIOS` selects cases and
   `THREADSTATUS_PROBE_REPEAT` repeats each in a fresh process for soak runs.
-- Publication and CI commands use Jolt v0.7.28 and writable cache directories.
+- Publication and CI commands require Jolt v0.8.0 or newer and writable cache directories.
   Workspace verification sets `JOLT_WRAPPER` to the required Chez 10.4.1
   wrapper. Verification does not modify dependency sources.
 - Playwright drives Chromium over the real HTTP server, proves the initial SSE

@@ -6,6 +6,9 @@ trace workbench. The initial page and trace details are server-rendered; the SSE
 enhancement streams durable updates without instrumenting the viewer's own
 requests.
 
+Jolt v0.8.0 or newer is required. Compiler-aspect builds additionally require
+an aspect-enabled v0.8.x compiler.
+
 ## Run it
 
 Install [Jolt](https://github.com/jolt-lang/jolt), then install the native chDB
@@ -63,6 +66,9 @@ Configuration is optional:
   enhancement-asset, and export routes (default `/oscope`).
 - `JOLT_CHDB_LIB` selects an existing `libchdb` installation.
 - `JOLT_CHDB_CACHE_DIR` selects where the installer stores chDB.
+- `OTEL_INSTRUMENTATION_DB_CAPTURE_ROW_COUNTS=true` opts the demo into bounded
+  database returned-row and affected-row cardinality attributes. Query text,
+  parameters, labels, and row values remain excluded.
 - `DEMO_LEMONADE_BASE_URL` selects the physical OpenAI-compatible endpoint,
   which is never copied into telemetry.
 - `DEMO_LEMONADE_TELEMETRY_ADDRESS` selects a non-identifying display label
@@ -88,15 +94,14 @@ observability libraries are pinned to exact published fork SHAs; the only
 `:local/root` is the enclosing demo application being compiled from
 `samizdat-demo/`.
 
-Build it, then launch it through the cwd-safe wrapper:
+Build it with the version-checked helper, then launch it through the cwd-safe
+wrapper:
 
 ```sh
-cd samizdat-demo
 env JOLT_BUILD_PROFILE=1 \
-  /absolute/path/to/jolt-with-chez-10.4.1 \
-  /absolute/path/to/aspect-enabled-jolt build \
-  -m demo.samizdat-main -o ../target/samizdat-observability-demo
-cd ..
+JOLT_TOOLCHAIN=/absolute/path/to/jolt-with-chez-10.4.1 \
+JOLT_ASPECT_BIN=/absolute/path/to/aspect-enabled-jolt \
+  scripts/build-samizdat-demo.sh
 
 env DEMO_SAMIZDAT_ROOT=/absolute/path/to/a/disposable/project \
 DEMO_SAMIZDAT_DB=/absolute/path/to/samizdat.sqlite3 \

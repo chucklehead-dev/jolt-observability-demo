@@ -5,6 +5,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "build:samizdat": "scripts/build-samizdat-demo.sh",
     "test:browser": "playwright test --project=chromium",
     "test:browser:samizdat": "test/samizdat_playwright_e2e.sh",
     "test:browser:aspect": "test/aspect_demo_e2e.sh",
