@@ -7,31 +7,31 @@
          :git/sha "d9fa89309fb9faa3dd3e8319a79d57fc03925341"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
-         :git/sha "7cf4b2d56f8d10fef83594a543146f886e8180ad"}
+         :git/sha "a42592a690000fcb749f608a94053695e467c836"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "ebcb0d1b36532155452d7a75842e232f7feeb548"}
+         :git/sha "b18830ae1fc6eef6add5e059ae302e94a1f0ed70"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
-         :git/sha "824115821a53e4d7da544b31dbe920fef292493f"}
+         :git/sha "39c04ed04933fdeaa5e2f481aa8c9b294afb5e7e"}
         io.github.chucklehead-dev/jolt-otel-clickhouse
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-clickhouse.git"
-         :git/sha "9a13e3bbe63205a608875bbcd204175c6f1f242a"}
+         :git/sha "a247f418a462357d0a114d5f51024d00bd38189f"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
-         :git/sha "c9fdbbfefdaba3cc88563c91d3eeae2c8bf26699"}
+         :git/sha "eaebe2250558e6b94a2152cb245eae071d0e593c"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
-         :git/sha "8badefe2d035b0533dc068c58460fc39e0851764"}
+         :git/sha "158bc20e5f34dd8047a3ffabdd602bc9a68915dc"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
-         :git/sha "b83514cf6babf70257538e2c75f0e3ab8ecd9f8a"}
+         :git/sha "23a90e77406c5f4d99fa61b160c9723417ef87c0"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
-         :git/sha "923ec6b5912bb1246c87d325febce70c388bab6b"}
+         :git/sha "9ae943fcaf7725b1b36e00bc216aef17405f295a"}
         io.github.chucklehead-dev/oscope
         {:git/url "https://github.com/chucklehead-dev/oscope.git"
-         :git/sha "df561a8339bfdfee219b503c486ad60f90c07c0d"}
+         :git/sha "eb9b231b4e1743817feca76a990dc0502eb5c9ad"}
         jolt-lang/glimmer-datastar
         {:git/url "https://github.com/jolt-lang/glimmer-datastar.git"
          :git/sha "78930867485e4b6ea21da1e1a13c3e8fd828c035"}
@@ -40,10 +40,7 @@
          :git/sha "6dab5597dc0d912793fe175d0d3cbb9e75f11426"}
         io.github.casselc/data.json
         {:git/url "https://github.com/casselc/data.json.git"
-         :git/sha "8a6dc9668e5c3596a335759defeb7ec80cd3b5f8"}
-        io.github.chucklehead-dev/time
-        {:git/url "https://github.com/chucklehead-dev/time.git"
-         :git/sha "2494b21b25cd959573c3e6050cd475e4bf302fdb"}}
+         :git/sha "932444043c0c06f9e295ba4963419b2481e9dd07"}}
 
  :jolt/build {:embed ["resources"]
               :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
