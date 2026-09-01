@@ -6,7 +6,8 @@ scenario=${1:?scenario is required}
 port=${2:?port is required}
 
 cd "$repo_dir"
+jolt=${JOLT_EXE:-${JOLT_BIN:-jolt}}
 if [[ -n ${JOLT_WRAPPER:-} ]]; then
-  exec "$JOLT_WRAPPER" jolt -M:threadstatus-probe "$scenario" "$port"
+  exec "$JOLT_WRAPPER" "$jolt" -M:threadstatus-probe "$scenario" "$port"
 fi
-exec "${JOLT_BIN:-jolt}" -M:threadstatus-probe "$scenario" "$port"
+exec "$jolt" -M:threadstatus-probe "$scenario" "$port"

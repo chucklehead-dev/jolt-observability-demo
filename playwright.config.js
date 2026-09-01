@@ -2,9 +2,10 @@ const {defineConfig, devices} = require("@playwright/test");
 
 const port = Number(process.env.DEMO_E2E_PORT || 30808);
 const baseURL = `http://127.0.0.1:${port}`;
+const joltExecutable = process.env.JOLT_EXE || process.env.JOLT_BIN || "jolt";
 const joltCommand = process.env.JOLT_WRAPPER
-  ? `${process.env.JOLT_WRAPPER} jolt`
-  : "jolt";
+  ? `${process.env.JOLT_WRAPPER} ${joltExecutable}`
+  : joltExecutable;
 const demoServerCommand = process.env.DEMO_SERVER_COMMAND ||
   `${joltCommand} -m demo.main`;
 

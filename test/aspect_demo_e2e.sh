@@ -21,6 +21,7 @@ esac
 
 cd "$repo"
 JOLT_WRAPPER="$toolchain" \
+  JOLT_EXE="$jolt" \
   DEMO_EXPECT_WOVEN_DB=0 \
   npx playwright test --project=chromium
 

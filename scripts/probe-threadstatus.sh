@@ -30,6 +30,9 @@ for scenario in $scenarios; do
   fi
   if [[ -n ${JOLT_WRAPPER:-} ]]; then
     probe_env+=(JOLT_WRAPPER="$JOLT_WRAPPER")
+  fi
+  if [[ -n ${JOLT_EXE:-} ]]; then
+    probe_env+=(JOLT_EXE="$JOLT_EXE")
   elif [[ -n ${JOLT_BIN:-} ]]; then
     probe_env+=(JOLT_BIN="$JOLT_BIN")
   fi

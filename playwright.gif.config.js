@@ -3,9 +3,10 @@ const {defineConfig, devices} = require("@playwright/test");
 const appPort = Number(process.env.DEMO_GIF_PORT || 31808);
 const modelPort = Number(process.env.DEMO_MODEL_FIXTURE_PORT || 31809);
 const baseURL = `http://127.0.0.1:${appPort}`;
+const joltExecutable = process.env.JOLT_EXE || process.env.JOLT_BIN || "jolt";
 const joltCommand = process.env.JOLT_WRAPPER
-  ? `${process.env.JOLT_WRAPPER} jolt`
-  : "jolt";
+  ? `${process.env.JOLT_WRAPPER} ${joltExecutable}`
+  : joltExecutable;
 
 module.exports = defineConfig({
   testDir: "test/browser",
