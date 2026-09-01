@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      JOLT_CACHE_DIR: ${{ github.workspace }}/.jolt-cache-v0.8-pre-55bd7218
-      JOLT_GITLIBS_DIR: ${{ github.workspace }}/.jolt-gitlibs-v0.8-pre-55bd7218
+      JOLT_CACHE_DIR: ${{ github.workspace }}/.jolt-cache-v0.8-pre-3c0c7721
+      JOLT_GITLIBS_DIR: ${{ github.workspace }}/.jolt-gitlibs-v0.8-pre-3c0c7721
       # The pinned source revision contains the 0.8 FFI contract but still has
       # a pre-release git-describe version. Remove this with the v0.8.0 pin.
       JOLT_SKIP_MIN_VERSION: "1"
@@ -52,14 +52,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: casselc/jolt
-          ref: 55bd721803f765831b2538671fe2d7d6efc97bef
+          ref: 3c0c7721b996fb863be12e8616c02400f546388e
           path: .ci/jolt
           submodules: recursive
           fetch-depth: 0
 
       - name: Build aspect-capable Jolt 0.8 prerelease
         run: |
-          test "$(git -C .ci/jolt rev-parse HEAD)" = "55bd721803f765831b2538671fe2d7d6efc97bef"
+          test "$(git -C .ci/jolt rev-parse HEAD)" = "3c0c7721b996fb863be12e8616c02400f546388e"
           make -C .ci/jolt CHEZ=/opt/chez/bin/chez -j1 testbin
           echo "${{ github.workspace }}/.ci/jolt/target/release" >> "$GITHUB_PATH"
           .ci/jolt/target/release/jolt --version
