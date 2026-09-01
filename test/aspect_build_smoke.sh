@@ -13,6 +13,15 @@ run_jolt() {
   fi
 }
 
+version=$(run_jolt --version)
+case "$version" in
+  "jolt v0.8."*) ;;
+  *)
+    echo "FAIL: aspect smoke requires a Jolt v0.8.x compiler, got: $version" >&2
+    exit 1
+    ;;
+esac
+
 cd "$repo"
 run_jolt -Sdeps \
   '{:paths ["src" "resources" "test"]

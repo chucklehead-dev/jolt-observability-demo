@@ -13,8 +13,9 @@ function appendBounded(transcript, chunk) {
 
 function startDemo() {
   const wrapper = process.env.JOLT_WRAPPER;
-  const command = wrapper || "jolt";
-  const args = wrapper ? ["jolt", "-m", "demo.main"] : ["-m", "demo.main"];
+  const joltBin = process.env.JOLT_BIN || "jolt";
+  const command = wrapper || joltBin;
+  const args = wrapper ? [joltBin, "-m", "demo.main"] : ["-m", "demo.main"];
   const transcript = {value: ""};
   const child = spawn(command, args, {
     cwd: process.cwd(),

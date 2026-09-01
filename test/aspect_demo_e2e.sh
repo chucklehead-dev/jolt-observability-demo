@@ -14,6 +14,15 @@ run_jolt() {
   fi
 }
 
+version=$(run_jolt --version)
+case "$version" in
+  "jolt v0.8."*) ;;
+  *)
+    echo "FAIL: aspect demo requires a Jolt v0.8.x compiler, got: $version" >&2
+    exit 1
+    ;;
+esac
+
 case "$output" in
   /*) output_path=$output ;;
   *) output_path=$repo/$output ;;
@@ -21,6 +30,7 @@ esac
 
 cd "$repo"
 JOLT_WRAPPER="$toolchain" \
+JOLT_BIN="$jolt" \
   DEMO_EXPECT_WOVEN_DB=0 \
   npx playwright test --project=chromium
 
