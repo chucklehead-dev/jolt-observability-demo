@@ -8,26 +8,84 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
-      JOLT_CACHE_DIR: ${{ github.workspace }}/.jolt-cache-v0.7.28
-      JOLT_GITLIBS_DIR: ${{ github.workspace }}/.jolt-gitlibs-v0.7.28
+      JOLT_CACHE_DIR: ${{ github.workspace }}/.jolt-cache-v0.8-pre-55bd7218
+      JOLT_GITLIBS_DIR: ${{ github.workspace }}/.jolt-gitlibs-v0.8-pre-55bd7218
+      # The pinned source revision contains the 0.8 FFI contract but still has
+      # a pre-release git-describe version. Remove this with the v0.8.0 pin.
+      JOLT_SKIP_MIN_VERSION: "1"
       HEGEL_CACHE_DIR: ${{ github.workspace }}/.hegel-native
       JOLT_CHDB_CACHE_DIR: ${{ github.workspace }}/.chdb-native
     steps:
       - uses: actions/checkout@v4
-      - name: Install Jolt v0.7.28
+
+      - name: Install build dependencies
         run: |
-          set -euo pipefail
-          install_dir="$RUNNER_TEMP/jolt-bin"
-          curl -fsSL https://raw.githubusercontent.com/jolt-lang/jolt/v0.7.28/install \
-            | bash -s -- --dir "$install_dir" --version 0.7.28
-          echo "$install_dir" >> "$GITHUB_PATH"
-      - name: Assert Jolt version
-        run: test "$(jolt --version)" = "jolt v0.7.28"
+          sudo apt-get update
+          sudo apt-get install -y build-essential git liblz4-dev zlib1g-dev libncurses-dev uuid-dev
+
+      - name: Cache Chez Scheme 10.4.1
+        id: cache-chez
+        uses: actions/cache@v4
+        with:
+          path: /opt/chez
+          key: chez-${{ runner.os }}-${{ env.ImageOS }}-v10.4.1-x11off
+
+      - name: Build Chez Scheme 10.4.1
+        if: steps.cache-chez.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v10.4.1 https://github.com/cisco/ChezScheme.git "$RUNNER_TEMP/chez-src"
+          cd "$RUNNER_TEMP/chez-src"
+          ./configure --installprefix=/opt/chez --threads --disable-x11
+          make -j"$(nproc)"
+          sudo make install
+          sudo chown -R "$USER" /opt/chez
+
+      - name: Put Chez on PATH
+        run: |
+          printf '#!/bin/sh\nexec /opt/chez/bin/scheme "$@"\n' > /opt/chez/bin/chez
+          chmod +x /opt/chez/bin/chez
+          echo /opt/chez/bin >> "$GITHUB_PATH"
+          test "$(/opt/chez/bin/chez --version)" = "10.4.1"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: casselc/jolt
+          ref: 55bd721803f765831b2538671fe2d7d6efc97bef
+          path: .ci/jolt
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build aspect-capable Jolt 0.8 prerelease
+        run: |
+          test "$(git -C .ci/jolt rev-parse HEAD)" = "55bd721803f765831b2538671fe2d7d6efc97bef"
+          make -C .ci/jolt CHEZ=/opt/chez/bin/chez -j1 testbin
+          echo "${{ github.workspace }}/.ci/jolt/target/release" >> "$GITHUB_PATH"
+          .ci/jolt/target/release/jolt --version
+
       - name: Install pinned native libraries
         run: |
           jolt -M:setup-native
           jolt -A:test -m hegel.install
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install browser test dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
       - name: Test
         run: jolt -M:test
+
+      - name: Test source and woven browser stories
+        env:
+          CHEZ: /opt/chez/bin/chez
+          CHEZSCHEME: /opt/chez/bin/chez
+          JOLT_CHEZ: /opt/chez/bin/chez
+          JOLT_ASPECT_BIN: ${{ github.workspace }}/.ci/jolt/target/release/jolt
+        run: test/aspect_demo_e2e.sh
