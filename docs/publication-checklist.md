@@ -9,11 +9,13 @@ do not replace exact coordinates with branch names or unpublished local roots.
 As of 2026-09-01, the exact graph exercised by the source, woven, persistent
 chDB, and Samizdat gates is on the owning repositories' `main` branches for:
 
-- `jolt-otel-instrumentation-db` at `c9fdbbfefdaba3cc88563c91d3eeae2c8bf26699`;
-- `jolt-otel-instrumentation-http-client` at `8badefe2d035b0533dc068c58460fc39e0851764`;
-- `jolt-otel-instrumentation-http-server` at `b83514cf6babf70257538e2c75f0e3ab8ecd9f8a`;
-- `jolt-otel-clickhouse` at `9a13e3bbe63205a608875bbcd204175c6f1f242a`;
-- this demo at `f5f1431e59c679f54de8d13e3378ff8c6976b8aa`.
+- `jolt-otel-instrumentation-db` at `eaebe2250558e6b94a2152cb245eae071d0e593c`;
+- `jolt-otel-instrumentation-http-client` at `158bc20e5f34dd8047a3ffabdd602bc9a68915dc`;
+- `jolt-otel-instrumentation-http-server` at `23a90e77406c5f4d99fa61b160c9723417ef87c0`;
+- `jolt-chdb` at `39c04ed04933fdeaa5e2f481aa8c9b294afb5e7e`;
+- `jolt-otel-clickhouse` at `a247f418a462357d0a114d5f51024d00bd38189f`;
+- `jolt-otel-viewer` at `9ae943fcaf7725b1b36e00bc216aef17405f295a`;
+- `oscope` at `eb9b231b4e1743817feca76a990dc0502eb5c9ad`.
 
 GitHub's authoritative refs were checked after those fast-forwards, and the
 demo's non-OTel woven aspect smoke passed again from the exact `main` tip.
@@ -42,15 +44,19 @@ branch SHAs until their own upstream disposition is decided.
 3. **OTel libraries.** The DB, HTTP-client, HTTP-server, and ClickHouse
    instrumentation/export repos are now on their owned `main` branches and are
    exact-pinned by the demo. The maintained OTel runtime remains fork-pinned at
-   `ebcb0d1`; the corrected library-owned HTTP-client aspect lineage remains
-   fork-pinned at `7cf4b2d`; and the provider-neutral `jolt-http` seam remains
-   fork-pinned at `d9fa893`. Do not report those three as upstream-main fixes.
+   `b18830a`; the corrected library-owned HTTP-client aspect lineage now merges
+   upstream v0.0.6 and remains fork-pinned at `a42592a`; and the
+   provider-neutral `jolt-http` seam remains fork-pinned at `d9fa893`. Do not
+   report those three as upstream-main fixes.
    The server consumer owns accepted Ring callback
    completion, request-scoped source-fallback detection, and an observational
    post-span hook. Update each dependent repo to an exact resulting SHA only
    after its own full gate is green.
-4. **Observability demo.** `chucklehead-dev/jolt-observability-demo:main` now
-   contains the Jolt 0.8 graph and exact-executable launcher gate at `f5f1431`.
+4. **Observability demo.** `chucklehead-dev/jolt-observability-demo:main`
+   contains the Jolt 0.8 graph and exact-executable launcher gate. Dependency
+   commit `8831501` records the current upstream-v0.0.6 HTTP lineage and
+   dependency-owned time-provider graph without
+   trying to embed the repository's self-changing `main` tip in this document.
    The library graph uses exact Samizdat, viewer,
    OTel, chDB, ClickHouse exporter, and oscope coordinates. The intentional
    `samizdat-demo/` local root names the enclosing application being compiled,
@@ -61,11 +67,13 @@ branch SHAs until their own upstream disposition is decided.
    `ThreadStatus` fatal.
 5. **Jolt time provider metadata.** Jolt 0.8 dependency-owned host-class
    discovery requires the `jolt.time` provider declaration tracked by ledger
-   issue #66. The demo currently pins the verified fork repair at `2494b21`.
+   issue #66. `data.json` now owns its runtime dependency on the verified
+   provider repair `2494b21`; consumers no longer need a demo-only direct pin.
    Keep that issue open until `jolt-lang/time` contains and independently
    verifies the provider table.
-6. **oscope extraction.** `chucklehead-dev/oscope` is published and the demo
-   consumes its exact SHA. Its canonical EDN query/screen/command/effect
+6. **oscope extraction.** `chucklehead-dev/oscope` is published on its coherent
+   Jolt 0.8 graph at `eb9b231`, and the demo consumes that exact SHA. Its
+   canonical EDN query/screen/command/effect
    contract drives Web, Glitter/GTK, and Glimmer adapters without copied query
    or view-model namespaces. Preserve bounded explorer caps and exact query-plan
    provenance. Its published raw-export contract now proves source-wide
