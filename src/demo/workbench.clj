@@ -17,6 +17,7 @@
             [demo.workbench-fixture :as fixture]
             [demo.workbench-view :as view]
             [glimmer.ratom :as ratom]
+            [jolt.aspects :as aspects]
             [jolt.datastar.core :as datastar]
             [jolt.http.body :as http-body])
   (:import [java.net URLDecoder]))
@@ -97,7 +98,8 @@
   [id prompt adapter]
   (let [prompt (bounded-text prompt max-prompt-bytes)
         {:keys [events response capture]}
-        (fixture/run-script adapter prompt)]
+        (aspects/at {:id :demo.workbench/run-script :role :agent/run}
+          (fixture/run-script adapter prompt))]
     {:id id
      :prompt prompt
      :status :running
@@ -235,7 +237,9 @@
                     (finish! apply-async-failed
                              (when error (.getName (class error)))))}]
     (try
-      (let [handle (fixture/start-async! adapter prompt callbacks)]
+      (let [handle
+            (aspects/at {:id :demo.workbench/start-async :role :agent/run}
+              (fixture/start-async! adapter prompt callbacks))]
         (if (map? handle)
           ;; Completion is allowed to race start-async!'s return. Testing the
           ;; shared flag inside swap! prevents registering an already-finished

@@ -2,9 +2,15 @@
 
  :jolt/min-version "0.8.0"
 
+ :jolt/aspects
+ {:library {:id chucklehead-dev/jolt-observability-demo
+            :version "9840fbb3245211bbecf3098777403b2b30678e1d"}
+  :namespaces [demo.workbench]
+  :manifest "resources/META-INF/jolt/aspects/demo-workbench.edn"}
+
  :deps {io.github.casselc/jolt-http
         {:git/url "https://github.com/casselc/jolt-http.git"
-         :git/sha "d9fa89309fb9faa3dd3e8319a79d57fc03925341"}
+         :git/sha "fb596ea1a7d1899fd437d21c9da4fbfab0e436a2"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
          :git/sha "a42592a690000fcb749f608a94053695e467c836"}
@@ -19,13 +25,13 @@
          :git/sha "a247f418a462357d0a114d5f51024d00bd38189f"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
-         :git/sha "eaebe2250558e6b94a2152cb245eae071d0e593c"}
+         :git/sha "130401a8f306f3791d395b1ae4efe9f51870560d"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
-         :git/sha "158bc20e5f34dd8047a3ffabdd602bc9a68915dc"}
+         :git/sha "ca76104a575dadfb0c7d4a1ab6aa1e253e180fc9"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-server
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-server.git"
-         :git/sha "23a90e77406c5f4d99fa61b160c9723417ef87c0"}
+         :git/sha "02db523456f5c6cba99a536669c7d0a58f033729"}
         io.github.chucklehead-dev/jolt-otel-viewer
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-viewer.git"
          :git/sha "9ae943fcaf7725b1b36e00bc216aef17405f295a"}
@@ -45,12 +51,9 @@
  :jolt/build {:embed ["resources"]
               :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
                          :provider demo.aspect-provider}
-                        {:resource "META-INF/jolt/aspects/db-jdbc-shim.edn"
-                         :provider otel.instrumentation.db}
-                        {:resource "META-INF/jolt/aspects/http-client-core.edn"
-                         :provider otel.instrumentation.http-client}
-                        {:resource "META-INF/jolt/aspects/http-server.edn"
-                         :provider otel.instrumentation.http-server}]
+                        {:preset "META-INF/jolt/instrumentation/db/basic.edn"}
+                        {:preset "META-INF/jolt/instrumentation/http-client/basic.edn"}
+                        {:preset "META-INF/jolt/instrumentation/http-server/basic.edn"}]
               :aspect-report "target/aspects.edn"}
 
  :aliases {:setup-native {:main-opts ["-m" "jdbc.chdb.install"]}

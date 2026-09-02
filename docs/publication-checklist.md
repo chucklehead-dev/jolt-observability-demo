@@ -4,6 +4,28 @@ This workspace slice spans independently versioned repositories. Keep the
 demo's exact-SHA composition green while publishing them in dependency order;
 do not replace exact coordinates with branch names or unpublished local roots.
 
+## Preset and source-annotation candidate snapshot
+
+The `codex/demo-presets-annotations-current` candidate exercises the reviewed
+Jolt compiler at `58a40e046b239b39c2c247604f0fb83a2231f91a`. Its woven build
+expands package-owned `basic` presets for DB, HTTP client, and HTTP server while
+keeping the demo-local journal provider explicit. The exact dependency refs are:
+
+- `casselc/jolt-http@fb596ea1a7d1899fd437d21c9da4fbfab0e436a2`, whose HTTP
+  server manifest is generated from cooperative entry annotations;
+- `casselc/db@ff2004f1b69a8d1795bb9469677249ca2eb79e52`, whose DB call
+  manifest is generated from a marker-refined call annotation;
+- `jolt-otel-instrumentation-http-client@ca76104a575dadfb0c7d4a1ab6aa1e253e180fc9`,
+  `jolt-otel-instrumentation-db@130401a8f306f3791d395b1ae4efe9f51870560d`,
+  and `jolt-otel-instrumentation-http-server@02db523456f5c6cba99a536669c7d0a58f033729`.
+
+`jolt aspects manifest --check` passes for the two annotated libraries and the
+demo's generated workbench manifest. The resolved plan contains all three
+preset identities, four providers, and six selected aspects. The demo remains
+runnable in both modes: 77 tests / 591 assertions pass, and the plain and woven
+Playwright stories each pass 9/9 scenarios. These refs remain review branches;
+the published-main snapshot below is unchanged until they are promoted.
+
 ## Published composition snapshot
 
 As of 2026-09-01, the exact graph exercised by the source, woven, persistent
