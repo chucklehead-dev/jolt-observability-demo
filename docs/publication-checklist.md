@@ -7,9 +7,10 @@ do not replace exact coordinates with branch names or unpublished local roots.
 ## Preset and source-annotation candidate snapshot
 
 The `codex/demo-presets-annotations-current` candidate exercises the reviewed
-Jolt compiler at `58a40e046b239b39c2c247604f0fb83a2231f91a`. Its woven build
-expands package-owned `basic` presets for DB, HTTP client, and HTTP server while
-keeping the demo-local journal provider explicit. The exact dependency refs are:
+Jolt compiler at `523c8d89929e9867563faa48d863c4df05a0d849`. Its root and
+standalone Samizdat woven builds expand package-owned `basic` presets for DB,
+HTTP client, and HTTP server while keeping the demo-local and Samizdat journal
+providers explicit. The exact library refs relevant to this change are:
 
 - `casselc/jolt-http@fb596ea1a7d1899fd437d21c9da4fbfab0e436a2`, whose HTTP
   server manifest is generated from cooperative entry annotations;
@@ -20,11 +21,19 @@ keeping the demo-local journal provider explicit. The exact dependency refs are:
   and `jolt-otel-instrumentation-http-server@02db523456f5c6cba99a536669c7d0a58f033729`.
 
 `jolt aspects manifest --check` passes for the two annotated libraries and the
-demo's generated workbench manifest. The resolved plan contains all three
-preset identities, four providers, and six selected aspects. The demo remains
-runnable in both modes: 77 tests / 591 assertions pass, and the plain and woven
-Playwright stories each pass 9/9 scenarios. These refs remain review branches;
-the published-main snapshot below is unchanged until they are promoted.
+demo's generated workbench manifest. The resolved root plan contains all three
+preset identities, four providers, and six selected aspects. Every compiled
+demo gate also validates non-vacuous three-phase compiler effect evidence and
+requires woven aspect-site identities to survive optimization unchanged. These
+refs remain review branches; the published-main snapshot below is unchanged
+until they are promoted.
+
+At the exact compiler and dependency refs above, the focused Clojure suite
+passes 79 tests / 596 assertions, including seven seeded Hegel properties with
+libhegel 0.33.3. The compiler-only demo smoke also passes with 3,154 effect
+subjects and two woven aspect sites. The standalone Samizdat build completes
+in 573.79 seconds and its runtime smoke passes with 10,509 effect subjects, 16
+woven aspect sites, working viewer/editor routes, and clean SIGINT shutdown.
 
 ## Published composition snapshot
 
