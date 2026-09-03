@@ -27,6 +27,14 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Restore the upstream release tag and verify the compiler tree
+        working-directory: .jolt-compiler
+        run: |
+          git fetch --no-tags https://github.com/jolt-lang/jolt.git \
+            refs/tags/v0.8.1:refs/tags/v0.8.1
+          test "$(git rev-parse HEAD)" = "523c8d89929e9867563faa48d863c4df05a0d849"
+          test "$(git describe --tags --long HEAD)" = "v0.8.1-30-g523c8d89"
+
       - name: Install compiler build dependencies
         run: |
           sudo apt-get update
