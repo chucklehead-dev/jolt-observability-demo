@@ -8,23 +8,62 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
-      JOLT_CACHE_DIR: ${{ github.workspace }}/.jolt-cache-v0.8.0
-      JOLT_GITLIBS_DIR: ${{ github.workspace }}/.jolt-gitlibs-v0.8.0
+      JOLT_CACHE_DIR: ${{ github.workspace }}/.jolt-cache-523c8d89
+      JOLT_GITLIBS_DIR: ${{ github.workspace }}/.jolt-gitlibs-523c8d89
       HEGEL_CACHE_DIR: ${{ github.workspace }}/.hegel-native
       JOLT_CHDB_CACHE_DIR: ${{ github.workspace }}/.chdb-native
     steps:
       - uses: actions/checkout@v4
-      - name: Install Jolt v0.8.0
+
+      - name: Check out the pinned aspect compiler
+        uses: actions/checkout@v5
+        with:
+          repository: casselc/jolt
+          ref: 523c8d89929e9867563faa48d863c4df05a0d849
+          path: .jolt-compiler
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install compiler build dependencies
         run: |
-          set -euo pipefail
-          install_dir="$RUNNER_TEMP/jolt-bin"
-          curl -fsSL https://raw.githubusercontent.com/jolt-lang/jolt/v0.8.0/install \
-            | bash -s -- --dir "$install_dir" --version 0.8.0
-          echo "$install_dir" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y build-essential git liblz4-dev zlib1g-dev libncurses-dev uuid-dev
+
+      - name: Cache Chez Scheme 10.4.1
+        id: cache-chez
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/chez
+          key: chez-${{ runner.os }}-${{ env.ImageOS }}-v10.4.1-x11off
+
+      - name: Build Chez Scheme 10.4.1
+        if: steps.cache-chez.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v10.4.1 https://github.com/cisco/ChezScheme.git /tmp/chez-src
+          cd /tmp/chez-src
+          ./configure --installprefix="$RUNNER_TEMP/chez" --threads --disable-x11
+          make -j"$(nproc)"
+          make install
+
+      - name: Put Chez Scheme 10.4.1 on PATH
+        run: |
+          printf '#!/bin/sh\nexec "%s/bin/scheme" "$@"\n' "$RUNNER_TEMP/chez" > "$RUNNER_TEMP/chez/bin/chez"
+          chmod +x "$RUNNER_TEMP/chez/bin/chez"
+          echo "$RUNNER_TEMP/chez/bin" >> "$GITHUB_PATH"
+          test "$("$RUNNER_TEMP/chez/bin/chez" --version)" = "10.4.1"
+
+      - name: Build the pinned aspect compiler
+        working-directory: .jolt-compiler
+        run: |
+          make CHEZ="$RUNNER_TEMP/chez/bin/chez" -j1 jolt-release
+          echo "$GITHUB_WORKSPACE/.jolt-compiler/target/release" >> "$GITHUB_PATH"
+
       - name: Assert Jolt version
-        run: test "$(jolt --version)" = "jolt v0.8.0"
+        run: test "$(jolt --version)" = "jolt v0.8.1-30-g523c8d89"
+
       - name: Install pinned native libraries
         run: |
           jolt -M:setup-native
