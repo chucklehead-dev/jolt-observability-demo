@@ -13,10 +13,10 @@
          :git/sha "fb596ea1a7d1899fd437d21c9da4fbfab0e436a2"}
         io.github.casselc/http-client
         {:git/url "https://github.com/casselc/http-client.git"
-         :git/sha "a42592a690000fcb749f608a94053695e467c836"}
+         :git/sha "d24ddf2be5f7b2cd4030fdab702eed4302a79043"}
         io.github.casselc/otel
         {:git/url "https://github.com/casselc/otel.git"
-         :git/sha "b18830ae1fc6eef6add5e059ae302e94a1f0ed70"}
+         :git/sha "c08164b213a855fa0613739cd1ba78ad60393a40"}
         io.github.chucklehead-dev/jolt-chdb
         {:git/url "https://github.com/chucklehead-dev/jolt-chdb.git"
          :git/sha "39c04ed04933fdeaa5e2f481aa8c9b294afb5e7e"}
@@ -26,6 +26,13 @@
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
          :git/sha "9ed00197288d1704f4a7ba69f2755467e3874d4b"}
+        io.github.chucklehead-dev/jolt-otel-instrumentation-core-async-flow
+        {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-core-async-flow.git"
+         :git/sha "ca4c8504ee0c5ea476d20b995d9e067673048b05"}
+        io.github.chucklehead-dev/jolt-core-async-flow-demo
+        {:git/url "https://github.com/chucklehead-dev/jolt-aspect-packs.git"
+         :git/sha "dddb6002496c579a9b976a7fe8d1d5f862cb0159"
+         :deps/root "scenarios/core-async-flow"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
          :git/sha "ca76104a575dadfb0c7d4a1ab6aa1e253e180fc9"}
@@ -52,6 +59,17 @@
               :aspects [{:resource "META-INF/jolt/aspects/demo-workbench.edn"
                          :provider demo.aspect-provider}
                         {:preset "META-INF/jolt/instrumentation/db/basic.edn"}
+                        ;; Select the manifest once: aspect ids are unique, and
+                        ;; ordered consumers compose OTel with the independent
+                        ;; semantic-history witness at each selected site.
+                        {:resource "META-INF/jolt/aspects/packs/core-async-flow-0.1.0.edn"
+                         :consumers
+                         [{:provider otel.instrumentation.core-async-flow/aspect-provider
+                           :roles [:concurrency/flow-lifecycle
+                                   :concurrency/flow-step]}
+                          {:provider jolt.aspect-packs.core-async-flow.provider/aspect-provider
+                           :roles [:concurrency/flow-lifecycle
+                                   :concurrency/flow-step]}]}
                         {:preset "META-INF/jolt/instrumentation/http-client/basic.edn"}
                         {:preset "META-INF/jolt/instrumentation/http-server/basic.edn"}]
               :aspect-report "target/aspects.edn"}

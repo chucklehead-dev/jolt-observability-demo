@@ -53,5 +53,11 @@ module.exports = defineConfig({
       outputDir: "docs/screenshots/test-artifacts",
       use: {...devices["Desktop Chrome"], viewport: {width: 1440, height: 1400}},
     },
+    {
+      name: "flow-docs",
+      testMatch: /\/flow-storyboard\.screenshots\.spec\.js$/,
+      outputDir: "docs/screenshots/test-artifacts",
+      use: {...devices["Desktop Chrome"], viewport: {width: 1440, height: 1400}},
+    },
   ],
 });

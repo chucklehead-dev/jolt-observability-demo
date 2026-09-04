@@ -31,6 +31,15 @@ bounded SSE stream; the page remains usable without JavaScript.
 
 ![Trace waterfall with queue and HTTP spans](docs/screenshots/03-trace-waterfall-dialog.png)
 
+The compiler-woven demo also runs a real bundled `core.async.flow` graph. Select
+**Run core.async.flow** to execute create/start/resume/inject/ping/pause/stop and
+the process step callbacks. The OTel consumer nests those spans under the
+`POST /flow-work` server span, while the independent history consumer checks
+complete lifecycle terminals and the scenario verifies delivered messages and
+process state without retaining message values.
+
+![Compiler-woven core.async.flow lifecycle and step spans](docs/screenshots/08-core-async-flow-trace.png)
+
 For the Samizdat-shaped model trace, point the demo at an OpenAI-compatible
 Lemonade server and use either model action in the header:
 

@@ -49,5 +49,9 @@ grep -q ':db.jdbc-shim/execute' target/aspects.edn
 grep -q ':http-client.core/request' target/aspects.edn
 grep -q ':http/server-ring-handler' target/aspects.edn
 grep -q ':http/server-sanitized-response' target/aspects.edn
+grep -q ':core-async-flow/create' target/aspects.edn
+grep -q ':core-async-flow/transform' target/aspects.edn
+grep -q 'otel.instrumentation.core-async-flow/aspect-provider' target/aspects.edn
+grep -q 'jolt.aspect-packs.core-async-flow.provider/aspect-provider' target/aspects.edn
 
 echo "PASS: woven demo browser story"

@@ -9,6 +9,7 @@
             [demo.workbench-fixture :as workbench-fixture]
             [jdbc.chdb]
             [jdbc.core :as jdbc]
+            [jolt.aspect-packs.scenario.core-async-flow :as flow-scenario]
             [jolt.http-client :as http-client]
             [jolt.http.server :as http-server]
             [otel.context :as context]
@@ -345,6 +346,7 @@
         (str/starts-with? path "/traces/") "/traces/:trace-id"
         (= path "/workbench") "/workbench"
         (= path "/work") "/work"
+        (= path "/flow-work") "/flow-work"
         (= path "/agent-work") "/agent-work"
         (= path "/agent-work-with-response") "/agent-work-with-response"
         (= path "/agent-work-intervention") "/agent-work-intervention"
@@ -418,6 +420,13 @@
       (do (logs/emit! logger {:body "loopback upstream completed" :severity :info})
           {:upstream (json/read-str (:body response) :key-fn keyword)})
       (throw (ex-info "loopback upstream failed" {:status (:status response)})))))
+
+(defn- flow-work! [_app]
+  ;; The maintained aspect-pack scenario owns stable public flow seams and runs
+  ;; the real bundled alpha implementation. Source mode expects no advice;
+  ;; woven mode requires the history consumer as an independent correctness
+  ;; witness alongside the OTel consumer.
+  (flow-scenario/run-scenario! {:plain? *source-http-fallback?*}))
 
 (defn- sanitized-captured-response [value]
   ;; Thinking is disabled by default, but strip the common delimited form too
@@ -641,7 +650,7 @@
   Ring tests need neither native state nor a live socket."
   [{:keys [connection port tracer logger propagator flush-fn stream-state
            summary-fn traces-fn filtered-traces-fn trace-filter-options-fn
-           now-nanos-fn trace-fn logs-fn work-fn agent-work-fn
+           now-nanos-fn trace-fn logs-fn work-fn flow-work-fn agent-work-fn
            agent-intervention-work-fn otlp-handler
            oscope-source oscope-handler oscope-path oscope-editor-handler
            oscope-workbench-handler oscope-events-handler
@@ -722,6 +731,7 @@
          :oscope-workbench-handler oscope-workbench-handler
          :oscope-events-handler oscope-events-handler
          :work-fn (or work-fn real-work!)
+         :flow-work-fn (or flow-work-fn flow-work!)
          :agent-work-fn (or agent-work-fn agent-work!)
          :agent-intervention-work-fn
          (or agent-intervention-work-fn agent-intervention-work!)
@@ -750,7 +760,7 @@
 
 (defn raw-handler [{:keys [summary-fn traces-fn filtered-traces-fn
                            trace-filter-options-fn now-nanos-fn trace-fn logs-fn
-                           work-fn agent-work-fn agent-intervention-work-fn
+                           work-fn flow-work-fn agent-work-fn agent-intervention-work-fn
                            logger stream-state otlp-handler oscope-handler
                            oscope-path oscope-editor-handler oscope-editor-path
                            oscope-workbench-handler oscope-events-handler]
@@ -787,6 +797,20 @@
                               :severity :error})
           {:status 502 :headers html-headers
            :body (viewer/render-page {:title "Work failed"
+                                      :summary {} :traces [] :logs []})}))
+
+      (and (= :post request-method) (= uri "/flow-work"))
+      (try
+        (flow-work-fn app)
+        (assoc (if (= "fetch" (get-in request [:headers "x-otel-enhancement"]))
+                 {:status 204 :headers {"Cache-Control" "no-store"} :body nil}
+                 {:status 303 :headers (assoc html-headers "Location" "/") :body ""})
+               ::flush? true)
+        (catch Throwable e
+          (logs/emit! logger {:body (str "flow demo failed: " (ex-message e))
+                              :severity :error})
+          {:status 502 :headers html-headers
+           :body (viewer/render-page {:title "Flow demo failed"
                                       :summary {} :traces [] :logs []})}))
 
       (and (= :post request-method)
@@ -835,6 +859,8 @@
                 {:title "Jolt Observability"
                  :eyebrow "OpenTelemetry · embedded chDB"
                  :post-actions [{:path "/work" :label "Generate work"}
+                                {:path "/flow-work"
+                                 :label "Run core.async.flow"}
                                 {:path "/agent-work"
                                  :label "Run model (metadata only)"}
                                 {:path "/agent-work-with-response"
@@ -854,6 +880,8 @@
                                  :eyebrow "OpenTelemetry · embedded chDB"
                                  :post-actions
                                  [{:path "/work" :label "Generate work"}
+                                  {:path "/flow-work"
+                                   :label "Run core.async.flow"}
                                   {:path "/agent-work"
                                    :label "Run model (metadata only)"}
                                   {:path "/agent-work-with-response"
@@ -883,6 +911,15 @@
                                          {:body (str "work failed: " (ex-message e))
                                           :severity :error})
                              (error-response 502 "upstream request failed")))
+        (= uri "/flow-work") (try
+                                (json-response (merge {:ok true}
+                                                      (flow-work-fn app)))
+                                (catch Throwable e
+                                  (logs/emit! logger
+                                              {:body (str "flow demo failed: "
+                                                          (ex-message e))
+                                               :severity :error})
+                                  (error-response 502 "flow demo failed")))
         (str/starts-with? uri "/api/traces/")
         (if-let [trace-id (trace-id-path uri)]
           (json-response (trace-fn trace-id))

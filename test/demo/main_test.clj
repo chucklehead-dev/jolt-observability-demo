@@ -53,6 +53,7 @@
                          :logs sample-logs})
      :logs-fn (constantly sample-logs)
      :work-fn (fn [_] {:upstream {:ok true}})
+     :flow-work-fn (fn [_] {:events 0 :seen-count 4 :plain? true})
      :agent-work-fn (fn [_ capture-response?]
                       {:response-captured capture-response?})
      :agent-intervention-work-fn
@@ -549,6 +550,43 @@
         response ((demo/handler app) {:request-method :get :uri "/work"})]
     (is (= 502 (:status response)))
     (is (= {:error "upstream request failed"} (decode response)))))
+
+(deftest core-async-flow-action-is-injectable-and-flushed
+  (let [calls (atom 0)
+        flushes (atom 0)
+        app (assoc (test-app)
+                   :flow-work-fn
+                   (fn [_]
+                     (swap! calls inc)
+                     {:events 23 :seen-count 6 :plain? false})
+                   :flush-fn #(swap! flushes inc))
+        h (demo/handler app)
+        api-response (h {:request-method :get :uri "/flow-work"})
+        form-response (h {:request-method :post :uri "/flow-work"})
+        enhanced-response (h {:request-method :post :uri "/flow-work"
+                              :headers {"x-otel-enhancement" "fetch"}})]
+    (is (= "/flow-work" (demo/route-for "/flow-work")))
+    (is (= {:ok true :events 23 :seen-count 6 :plain? false}
+           (decode api-response)))
+    (is (= 303 (:status form-response)))
+    (is (= "/" (get-in form-response [:headers "Location"])))
+    (is (= 204 (:status enhanced-response)))
+    (is (= 3 @calls))
+    (is (= 2 @flushes))
+    (is (str/includes? (:body (h {:request-method :get :uri "/"}))
+                       "Run core.async.flow"))))
+
+(deftest core-async-flow-failure-is-bounded
+  (let [app (assoc (test-app)
+                   :flow-work-fn
+                   (fn [_] (throw (ex-info "flow boom" {}))))
+        h (demo/handler app)
+        api-response (h {:request-method :get :uri "/flow-work"})
+        form-response (h {:request-method :post :uri "/flow-work"})]
+    (is (= 502 (:status api-response)))
+    (is (= {:error "flow demo failed"} (decode api-response)))
+    (is (= 502 (:status form-response)))
+    (is (str/includes? (:body form-response) "Flow demo failed"))))
 
 (deftest span-tree-preserves-hierarchy-and-orphans
   (let [forest (demo/span-tree sample-spans)

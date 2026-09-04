@@ -102,6 +102,38 @@ test("generated telemetry streams into the workbench without navigation", async 
   assertNoBrowserErrors();
 });
 
+test("core.async.flow scenario exposes correctness and woven telemetry", async ({page, request}) => {
+  const assertNoBrowserErrors = guardBrowserErrors(page);
+  const scenario = await (await request.get("/flow-work")).json();
+  expect(scenario.ok).toBe(true);
+  expect(scenario["seen-count"]).toBeGreaterThanOrEqual(4);
+  expect(scenario["plain?"]).toBe(!wovenDatabase);
+
+  const streamResponse = page.waitForResponse((response) =>
+    response.url().includes("datastar-sse=true") && response.status() === 200);
+  await page.goto("/");
+  await streamResponse;
+
+  const actionResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/flow-work") && response.request().method() === "POST");
+  await page.getByRole("button", {name: "Run core.async.flow"}).click();
+  await expect((await actionResponse).status()).toBe(204);
+
+  const traces = page.locator(".otel-trace-list");
+  if (wovenDatabase) {
+    const flowTrace = traces.locator("li", {hasText: "POST /flow-work"}).first();
+    await expect(flowTrace).toContainText("17 spans");
+    await flowTrace.getByRole("link").click();
+    const dialog = page.locator("dialog[data-otel-dialog]");
+    await expect(dialog).toContainText("core.async.flow create");
+    await expect(dialog).toContainText("core.async.flow step transform");
+    await page.keyboard.press("Escape");
+  } else {
+    await expect(traces).not.toContainText("core.async.flow");
+  }
+  assertNoBrowserErrors();
+});
+
 test("a /workbench run evolves live via SSE to a terminal response", async ({page}) => {
   const assertNoBrowserErrors = guardBrowserErrors(page);
   const streamResponse = page.waitForResponse((response) =>
