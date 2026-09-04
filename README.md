@@ -6,8 +6,8 @@ trace workbench. The initial page and trace details are server-rendered; the SSE
 enhancement streams durable updates without instrumenting the viewer's own
 requests.
 
-Jolt v0.8.0 or newer is required. Compiler-aspect builds additionally require
-an aspect-enabled v0.8.x compiler.
+Stock Jolt v0.8.1 or newer runs the source-mode application. Compiler-aspect
+builds additionally require the pinned aspect-enabled v0.8.x compiler.
 
 ## Run it
 
@@ -150,14 +150,15 @@ JOLT_CHDB_LIB=/absolute/path/to/libchdb.so \
   test/samizdat_playwright_e2e.sh
 ```
 
-The compiled-binary gates first validate
+Every compiled-binary gate first validates
 `target/samizdat-observability-demo.build/effects.edn` against
 `target/samizdat-aspects.edn`. All plain, woven, and optimized compiler phases
 must have the same nonempty callable set; compiler verification must be clean;
 and the woven aspect-site identities must survive optimization exactly.
 
 `test/samizdat_real_run_smoke.sh` provides the corresponding browser-free
-compiled-binary smoke.
+compiled-binary smoke and enforces the same effect-evidence contract before
+launching the binary.
 
 The same deterministic real run produces the checked-in animated trace tour.
 It submits the nonce-bearing coding task, waits for the actual edit and test

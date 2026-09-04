@@ -17,6 +17,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install stock Jolt v0.8.1
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/jolt-lang/jolt/b345529758a5e9e6ecfbf1d168358175561ba758/install \
+            -o "$RUNNER_TEMP/install-stock-jolt"
+          printf '%s  %s\n' \
+            1a4732bae3e4cdc4e0b68142e685952fffc1b7fb6354a043303a5d8b12f33678 \
+            "$RUNNER_TEMP/install-stock-jolt" | sha256sum --check --strict
+          bash "$RUNNER_TEMP/install-stock-jolt" \
+            --version v0.8.1 --repo jolt-lang/jolt \
+            --checksum ddca03c95190a8079c3674482187782796031cf0de685ee29411f08481bc440c \
+            --dir "$RUNNER_TEMP/stock-jolt"
+          test "$("$RUNNER_TEMP/stock-jolt/jolt" --version)" = "jolt v0.8.1"
+
+      - name: Check the documented stock-Jolt source boundary
+        run: |
+          output=$("$RUNNER_TEMP/stock-jolt/jolt" -e \
+            "(require 'demo.main) (println :stock-source-ready)")
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" | grep -q ':stock-source-ready'
+
       - name: Check out the pinned aspect compiler
         uses: actions/checkout@v5
         with:
@@ -73,6 +94,9 @@ jobs:
 
       - name: Assert Jolt version
         run: test "$(jolt --version)" = "jolt v0.8.1-30-g523c8d89"
+
+      - name: Check generated workbench manifest
+        run: jolt aspects manifest --check
 
       - name: Install pinned native libraries
         run: |

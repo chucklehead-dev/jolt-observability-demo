@@ -4,7 +4,7 @@
 
  :jolt/aspects
  {:library {:id chucklehead-dev/jolt-observability-demo
-            :version "9840fbb3245211bbecf3098777403b2b30678e1d"}
+            :version "0.1.0"}
   :namespaces [demo.workbench]
   :manifest "resources/META-INF/jolt/aspects/demo-workbench.edn"}
 
@@ -25,7 +25,7 @@
          :git/sha "a247f418a462357d0a114d5f51024d00bd38189f"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-db
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-db.git"
-         :git/sha "130401a8f306f3791d395b1ae4efe9f51870560d"}
+         :git/sha "9ed00197288d1704f4a7ba69f2755467e3874d4b"}
         io.github.chucklehead-dev/jolt-otel-instrumentation-http-client
         {:git/url "https://github.com/chucklehead-dev/jolt-otel-instrumentation-http-client.git"
          :git/sha "ca76104a575dadfb0c7d4a1ab6aa1e253e180fc9"}
