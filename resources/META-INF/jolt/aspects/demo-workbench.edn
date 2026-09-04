@@ -1,16 +1,11 @@
 {:schema 1
- :library {:id chucklehead-dev/jolt-observability-demo
-           :version "9840fbb3245211bbecf3098777403b2b30678e1d"}
+ :library {:id chucklehead-dev/jolt-observability-demo :version "0.1.0"}
  :aspects
  [{:id :demo.workbench/run-script
-   :match {:ns demo.workbench
-           :call demo.workbench-fixture/run-script
-           :arity 2}
+   :match {:arity 2 :entry demo.workbench/observed-run-script}
    :advice-role :agent/run
    :expect {:matches 1}}
   {:id :demo.workbench/start-async
-   :match {:ns demo.workbench
-           :call demo.workbench-fixture/start-async!
-           :arity 3}
+   :match {:arity 3 :entry demo.workbench/observed-start-async!}
    :advice-role :agent/run
    :expect {:matches 1}}]}

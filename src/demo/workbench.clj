@@ -91,13 +91,18 @@
   (let [s (str/trim (str (or value "")))]
     (subs s 0 (min limit (count s)))))
 
+(defn- ^{:jolt.aspects/id :demo.workbench/run-script
+         :jolt.aspects/role :agent/run}
+  observed-run-script [adapter prompt]
+  (fixture/run-script adapter prompt))
+
 (defn new-run
   "Build a fresh run from `prompt` by consulting `adapter`. Pure given a pure
   adapter: the same id/prompt/adapter always produce the same run."
   [id prompt adapter]
   (let [prompt (bounded-text prompt max-prompt-bytes)
         {:keys [events response capture]}
-        (fixture/run-script adapter prompt)]
+        (observed-run-script adapter prompt)]
     {:id id
      :prompt prompt
      :status :running
@@ -221,6 +226,11 @@
              (if @done? handles (assoc handles id handle))))
     handle))
 
+(defn- ^{:jolt.aspects/id :demo.workbench/start-async
+         :jolt.aspects/role :agent/run}
+  observed-start-async! [adapter prompt callbacks]
+  (fixture/start-async! adapter prompt callbacks))
+
 (defn- async-run! [state adapter id prompt]
   (let [done? (atom false)
         finish! (fn [transition & args]
@@ -235,7 +245,8 @@
                     (finish! apply-async-failed
                              (when error (.getName (class error)))))}]
     (try
-      (let [handle (fixture/start-async! adapter prompt callbacks)]
+      (let [handle
+            (observed-start-async! adapter prompt callbacks)]
         (if (map? handle)
           ;; Completion is allowed to race start-async!'s return. Testing the
           ;; shared flag inside swap! prevents registering an already-finished

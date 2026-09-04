@@ -4,6 +4,46 @@ This workspace slice spans independently versioned repositories. Keep the
 demo's exact-SHA composition green while publishing them in dependency order;
 do not replace exact coordinates with branch names or unpublished local roots.
 
+## Preset and source-annotation candidate snapshot
+
+The `codex/demo-presets-annotations-current` candidate exercises the reviewed
+Jolt compiler at `523c8d89929e9867563faa48d863c4df05a0d849`. Its root and
+standalone Samizdat woven builds expand package-owned `basic` presets for DB,
+HTTP client, and HTTP server while keeping the demo-local and Samizdat journal
+providers explicit. The exact library refs relevant to this change are:
+
+- `casselc/jolt-http@fb596ea1a7d1899fd437d21c9da4fbfab0e436a2`, whose HTTP
+  server manifest is generated from cooperative entry annotations;
+- `casselc/db@7075e5934caeae7f64a6784cf87a7ae16d427032`, whose DB execution
+  manifest is generated from a stock-compatible entry annotation; its
+  test-only validation tip is
+  `2f13feb862aa1cd4b1a14e544ee36aff22306002`;
+- `jolt-otel-instrumentation-http-client@ca76104a575dadfb0c7d4a1ab6aa1e253e180fc9`,
+  `jolt-otel-instrumentation-db@9ed00197288d1704f4a7ba69f2755467e3874d4b`,
+  and `jolt-otel-instrumentation-http-server@02db523456f5c6cba99a536669c7d0a58f033729`.
+
+`jolt aspects manifest --check` passes for the two annotated libraries and the
+demo's generated workbench manifest. The demo manifest uses semantic ABI
+version `0.1.0`; unlike a dependency coordinate, that embedded value is not a
+self-referential repository-head SHA. The resolved root plan contains all three
+preset identities, four providers, and six selected aspects. Every compiled
+demo gate also validates non-vacuous three-phase compiler effect evidence and
+requires woven aspect-site identities to survive optimization unchanged. These
+refs remain review branches; the published-main snapshot below is unchanged
+until they are promoted.
+
+At the exact compiler and dependency refs above, the focused Clojure suite
+passes 79 tests / 596 assertions, including seven seeded Hegel properties with
+libhegel 0.33.3. The compiler-only demo smoke also passes with 3,158 effect
+subjects and two woven aspect sites. The standalone Samizdat build completes
+in 573.79 seconds and its runtime smoke passes with 10,509 effect subjects, 16
+woven aspect sites, working viewer/editor routes, and clean SIGINT shutdown.
+The current root source and woven Chromium stories each pass all nine cases;
+the woven root build records 6,088 effect subjects and six preserved aspect
+sites, including `:db.jdbc-shim/execute`.
+The DB validation tip passes its full suite and checks the manifest's declared
+arity against the live annotated function's argument list.
+
 ## Published composition snapshot
 
 As of 2026-09-01, the exact graph exercised by the source, woven, persistent
