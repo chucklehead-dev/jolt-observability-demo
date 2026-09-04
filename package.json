@@ -12,6 +12,7 @@
     "test:browser:persistent": "scripts/test-browser-persistent.sh",
     "test:browser:restart": "playwright test --config=playwright.restart.config.js",
     "docs:screenshots": "playwright test --project=docs",
+    "docs:flow-screenshot": "playwright test --project=flow-docs",
     "docs:agent-screenshots": "playwright test --project=agent-docs",
     "docs:agent-gif": "scripts/render-agent-gif.sh",
     "docs:samizdat-gif": "scripts/render-samizdat-gif.sh"

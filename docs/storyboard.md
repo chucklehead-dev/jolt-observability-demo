@@ -84,6 +84,26 @@ source fallbacks without duplicates. The provider's post-span completion hook
 also proves a POST/303 redirect cannot expose a partially flushed trace; see
 [instrumented-build-spike.md](instrumented-build-spike.md).
 
+## Compiler-woven core.async.flow beat
+
+Select **Run core.async.flow** in the woven application. The demo executes the
+real bundled alpha flow implementation and validates its delivered messages,
+ping state, stop transition, and closed semantic-history operations. The same
+annotated lifecycle and step seams feed an OTel consumer, so their 16 child
+spans remain causally nested beneath the `POST /flow-work` server span rather
+than appearing as unrelated root traces. Neither consumer records the injected
+message values.
+
+Build `target/observability-demo-aspect` with `npm run test:browser:aspect`, then
+refresh the asserted screenshot with:
+
+```sh
+DEMO_SERVER_COMMAND=target/observability-demo-aspect \
+DEMO_EXPECT_WOVEN_DB=1 npm run docs:flow-screenshot
+```
+
+![Compiler-woven core.async.flow trace](screenshots/08-core-async-flow-trace.png)
+
 The persistent browser gate runs the ordinary live-update story, terminates the
 Jolt process, starts a second process over the same temporary `chdb:` path, and
 opens the exact previously captured five-span source trace. It also rejects the native
